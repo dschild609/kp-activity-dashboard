@@ -683,34 +683,73 @@ def compute_metrics(data):
 
     total_hours = float(hc["Hours"].sum()) if not hc.empty and "Hours" in hc.columns else 0.0
 
-    # --- Retention Tiers (7 / 30 / 60 day) ---
+    # --- Retention Tiers (7 / 30 / 60 day) — cascading, eligibility-aware ---
     total_new_starts = len(hires) if not hires.empty else 0
-    termed_with_days = pd.DataFrame()
-    retention_tiers = {}   # {7: {"early_terms": df, "early_count": int, "retained": int, "pct": float}, ...}
+    retention_tiers = {}
 
-    if total_new_starts > 0 and not terms.empty:
-        termed = terms[terms["Name"].isin(hires["Name"])].drop_duplicates("Name").copy()
-        if not termed.empty and "Start Date" in termed.columns and "End Date" in termed.columns:
-            termed = termed.dropna(subset=["Start Date", "End Date"])
-            if not termed.empty:
-                termed["Days Employed"] = (termed["End Date"] - termed["Start Date"]).dt.days
-                termed_with_days = termed
+    if total_new_starts > 0:
+        # Cutoff = latest date in the dataset (determines who is evaluable)
+        _cutoff_dates = []
+        if not hc.empty and "Week Ending" in hc.columns:
+            _cutoff_dates += hc["Week Ending"].dropna().tolist()
+        if not terms.empty and "End Date" in terms.columns:
+            _cutoff_dates += terms["End Date"].dropna().tolist()
+        if not hires.empty and "Start Date" in hires.columns:
+            _cutoff_dates += hires["Start Date"].dropna().tolist()
+        _cutoff = max(_cutoff_dates) if _cutoff_dates else pd.Timestamp.now()
 
-    for days in (7, 30, 60):
-        if not termed_with_days.empty:
-            early = termed_with_days[termed_with_days["Days Employed"] <= days].copy()
-            early_count = len(early)
+        # Build per-hire df with end date (if terminated)
+        hire_df = hires[["Name", "Start Date"]].drop_duplicates("Name").copy()
+        if not terms.empty and "Name" in terms.columns and "End Date" in terms.columns:
+            _term_lookup = terms[["Name", "End Date", "End Reason"]].drop_duplicates("Name").copy()
+            hire_df = hire_df.merge(_term_lookup, on="Name", how="left")
         else:
-            early = pd.DataFrame()
-            early_count = 0
-        retained = total_new_starts - early_count
-        pct = (retained / total_new_starts * 100) if total_new_starts > 0 else 100.0
-        retention_tiers[days] = {
-            "early_terms": early,
-            "early_count": early_count,
-            "retained":    retained,
-            "pct":         pct,
-        }
+            hire_df["End Date"] = pd.NaT
+            hire_df["End Reason"] = ""
+        hire_df["Days Employed"] = (hire_df["End Date"] - hire_df["Start Date"]).dt.days
+
+        _pool = hire_df.copy()  # cascades: each tier only evaluates survivors of prior tier
+
+        for days in (7, 30, 60):
+            eligible = _pool[
+                _pool["Start Date"] + pd.Timedelta(days=days) <= pd.Timestamp(_cutoff)
+            ].copy()
+
+            if eligible.empty:
+                retention_tiers[days] = {
+                    "early_terms": pd.DataFrame(),
+                    "early_count": 0,
+                    "retained": 0,
+                    "eligible": 0,
+                    "pct": None,  # None = insufficient data
+                }
+                _pool = pd.DataFrame(columns=hire_df.columns)
+                continue
+
+            _passed_mask = eligible["End Date"].isna() | (eligible["Days Employed"] >= days)
+            _passed = eligible[_passed_mask]
+            _failed = eligible[~_passed_mask]
+
+            # Early terms detail — pull full row from terms for reason/dates
+            if not _failed.empty and not terms.empty:
+                _et = terms[terms["Name"].isin(_failed["Name"])].drop_duplicates("Name").copy()
+                if not _et.empty and "Start Date" in _et.columns and "End Date" in _et.columns:
+                    _et = _et.dropna(subset=["Start Date", "End Date"])
+                    if not _et.empty:
+                        _et["Days Employed"] = (_et["End Date"] - _et["Start Date"]).dt.days
+                else:
+                    _et = pd.DataFrame()
+            else:
+                _et = pd.DataFrame()
+
+            retention_tiers[days] = {
+                "early_terms": _et,
+                "early_count": len(_failed),
+                "retained":    len(_passed),
+                "eligible":    len(eligible),
+                "pct":         len(_passed) / len(eligible) * 100,
+            }
+            _pool = _passed  # cascade survivors to next tier
 
     return {
         "adj_placements":      data["total_placements_raw"] - layoff_count,
@@ -1066,29 +1105,37 @@ def make_fig_retention_tiers(metrics, metrics_past=None, active_days=None):
     days_keys = [d for d in all_days if d in active_days]
     labels    = [l for d, l in zip(all_days, all_labels) if d in active_days]
     colors    = [c for d, c in zip(all_days, all_colors) if d in active_days]
+
+    # Filter out tiers with no data (pct=None)
+    valid = [(d, l, c) for d, l, c in zip(days_keys, labels, colors) if tiers[d]["pct"] is not None]
+    if not valid:
+        return go.Figure()
+    days_keys, labels, colors = zip(*valid)
+
     pcts      = [tiers[d]["pct"] for d in days_keys]
     retained  = [tiers[d]["retained"] for d in days_keys]
+    eligible  = [tiers[d]["eligible"] for d in days_keys]
     early     = [tiers[d]["early_count"] for d in days_keys]
 
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=labels, y=pcts, name="Current",
         marker_color=colors,
-        text=[f"{p:.0f}%<br><span style='font-size:10px'>{r} of {total}</span>" for p, r in zip(pcts, retained)],
+        text=[f"{p:.0f}%<br><span style='font-size:10px'>{r} of {e}</span>" for p, r, e in zip(pcts, retained, eligible)],
         textposition="outside", textfont=dict(size=13, color="#131313"),
-        hovertemplate="%{x}: %{y:.1f}% retained<br>%{customdata[0]} retained, %{customdata[1]} left<extra></extra>",
-        customdata=list(zip(retained, early)),
+        hovertemplate="%{x}: %{y:.1f}% retained<br>%{customdata[0]} retained of %{customdata[1]} eligible<extra></extra>",
+        customdata=list(zip(retained, eligible)),
     ))
 
     all_past_colors = ["rgba(123,0,0,0.35)", "rgba(148,0,0,0.35)", "rgba(192,57,43,0.35)"]
-    past_colors = [c for d, c in zip(all_days, all_past_colors) if d in active_days]
+    past_colors = [c for d, c in zip(all_days, all_past_colors) if d in days_keys]
     if metrics_past is not None and metrics_past["total_new_starts"] > 0:
         past_tiers = metrics_past["retention_tiers"]
-        past_pcts = [past_tiers[d]["pct"] for d in days_keys]
+        past_pcts = [past_tiers[d]["pct"] if past_tiers[d]["pct"] is not None else 0 for d in days_keys]
         fig.add_trace(go.Bar(
             x=labels, y=past_pcts, name="Prior Period",
             marker_color=past_colors,
-            text=[f"{p:.0f}%" for p in past_pcts],
+            text=[f"{p:.0f}%" if p else "" for p in past_pcts],
             textposition="outside", textfont=dict(size=11, color="#131313"),
         ))
 
@@ -1542,16 +1589,19 @@ def generate_pdf(data, metrics, data_past=None, metrics_past=None, display_opts=
     # ── Row 3: Retention ──────────────────────────────────────────────────────
     row3 = []
     tiers = metrics["retention_tiers"]
-    total_starts = metrics["total_new_starts"]
     for _days in _pdf_active_days if _pdf_active_days else []:
         _tier = tiers[_days]
-        ret_cell = _make_card_cell(
-            f"{_tier['pct']:.0f}%", f"{_days}-Day Retention",
-            f"{_tier['retained']} of {total_starts} retained past {_days} days"
-        )
-        if metrics_past and metrics_past["total_new_starts"] > 0:
-            _past_tier = metrics_past["retention_tiers"][_days]
-            _add_delta(ret_cell, _tier["pct"] - _past_tier["pct"], True, "up")
+        if _tier["pct"] is None:
+            ret_cell = _make_card_cell("N/A", f"{_days}-Day Retention", "Insufficient data")
+        else:
+            ret_cell = _make_card_cell(
+                f"{_tier['pct']:.0f}%", f"{_days}-Day Retention",
+                f"{_tier['retained']} of {_tier['eligible']} eligible"
+            )
+            if metrics_past and metrics_past["total_new_starts"] > 0:
+                _past_tier = metrics_past["retention_tiers"][_days]
+                if _past_tier["pct"] is not None:
+                    _add_delta(ret_cell, _tier["pct"] - _past_tier["pct"], True, "up")
         row3.append(ret_cell)
     _render_kpi_row(row3)
 
@@ -1730,14 +1780,16 @@ def generate_pdf(data, metrics, data_past=None, metrics_past=None, display_opts=
         ret_cards = []
         for _days in _pdf_active_days if _pdf_active_days else (7, 30, 60):
             _tier = tiers[_days]
-            _sub = f"{_tier['retained']} of {total_starts} retained past {_days} days"
-            cell = _make_card_cell(f"{_tier['pct']:.0f}%", f"{_days}-Day Retention", _sub)
-            if metrics_past is not None and metrics_past["total_new_starts"] > 0:
-                _past_tier = metrics_past["retention_tiers"][_days]
-                dt_result = _pdf_delta(_tier["pct"] - _past_tier["pct"], is_pct=True, good="up")
-                if dt_result:
-                    dt_text, dt_style = dt_result
-                    cell.insert(-1, Paragraph(dt_text, dt_style))
+            if _tier["pct"] is None:
+                cell = _make_card_cell("N/A", f"{_days}-Day Retention", "Insufficient data")
+            else:
+                _sub = f"{_tier['retained']} of {_tier['eligible']} eligible"
+                cell = _make_card_cell(f"{_tier['pct']:.0f}%", f"{_days}-Day Retention", _sub)
+                if metrics_past is not None and metrics_past["total_new_starts"] > 0:
+                    _past_tier = metrics_past["retention_tiers"][_days]
+                    if _past_tier["pct"] is not None:
+                        dt_text, dt_style = _pdf_delta(_tier["pct"] - _past_tier["pct"], is_pct=True, good="up")
+                        cell.insert(-1, Paragraph(dt_text, dt_style))
             ret_cards.append(cell)
 
         n_ret_cols = len(ret_cards) if ret_cards else 1
@@ -1747,11 +1799,11 @@ def generate_pdf(data, metrics, data_past=None, metrics_past=None, display_opts=
         story.append(ret_t)
         story.append(Spacer(1, 8))
 
-        # Early term detail table — show 60-day tier (most inclusive)
-        worst_tier = tiers[60]
-        if not worst_tier["early_terms"].empty:
-            story.append(Paragraph(f"Employees who left within 60 days ({worst_tier['early_count']})", sub_s))
-            et = worst_tier["early_terms"]
+        # Early term detail table — show most inclusive tier with data
+        _detail_tier = next((tiers[d] for d in (60, 30, 7) if tiers[d]["pct"] is not None and not tiers[d]["early_terms"].empty), None)
+        _detail_days = next((d for d in (60, 30, 7) if tiers[d]["pct"] is not None and not tiers[d]["early_terms"].empty), None)
+        if _detail_tier is not None:
+            et = _detail_tier["early_terms"]
             et_cols = [c for c in ["Name", "End Reason", "Days Employed", "Start Date", "End Date"] if c in et.columns]
             et_rows = [[Paragraph(c, th_s) for c in et_cols]]
             for _, row in et.iterrows():
@@ -1769,7 +1821,7 @@ def generate_pdf(data, metrics, data_past=None, metrics_past=None, display_opts=
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]))
-            story.append(Paragraph("Early Terminations (Within 10 Days)", h2_s))
+            story.append(Paragraph(f"Early Terminations (Within {_detail_days} Days)", h2_s))
             story.append(et_t)
             story.append(Spacer(1, 10))
 
@@ -2174,11 +2226,15 @@ if m["total_new_starts"] > 0:
             continue
         _tier = m["retention_tiers"][_days]
         _ret_delta = ""
+        if _tier["pct"] is None:
+            _row3.append(("simple", "N/A", f"{_label} Retention", "Insufficient data", ""))
+            continue
         if _show_deltas and metrics_past is not None and metrics_past["total_new_starts"] > 0:
             _past_tier = metrics_past["retention_tiers"][_days]
-            _ret_delta = _delta_html(_tier["pct"] - _past_tier["pct"], good="up", is_pct=True)
+            if _past_tier["pct"] is not None:
+                _ret_delta = _delta_html(_tier["pct"] - _past_tier["pct"], good="up", is_pct=True)
         _row3.append(("simple", f"{_tier['pct']:.0f}%", f"{_label} Retention",
-                      f"{_tier['retained']} of {m['total_new_starts']} retained", _ret_delta))
+                      f"{_tier['retained']} of {_tier['eligible']} eligible", _ret_delta))
 _render_row(_row3)
 
 # ── Row 4: Exclusions & Conversions ──────────────────────────────────────────

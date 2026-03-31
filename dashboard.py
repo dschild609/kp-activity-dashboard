@@ -1968,33 +1968,6 @@ with st.sidebar:
         st.caption(f"✅ Current: {uploaded.name}")
     if uploaded_past is not None:
         st.caption(f"✅ Past: {uploaded_past.name}")
-    st.markdown("---")
-    st.markdown("**Display Settings**")
-    show_headcount_card = st.checkbox("Starting Headcount", value=True, key="show_hc")
-    show_starts_card    = st.checkbox("Total Starts", value=True, key="show_starts")
-    show_inval_card     = st.checkbox("Involuntary Terms", value=True, key="show_inval")
-    show_vol_card       = st.checkbox("Voluntary Terms", value=True, key="show_vol")
-    show_layoff_card    = st.checkbox("Layoffs / Assign. Complete", value=True, key="show_layoff")
-    show_turnover_card  = st.checkbox("Total Turnover", value=True, key="show_turnover")
-    show_hours          = st.checkbox("Total Hours", value=True, key="show_hours")
-    show_converted      = st.checkbox("Converted Employees", value=True, key="show_converted")
-    st.markdown("---")
-    st.markdown("**Charts**")
-    show_headcount_chart = st.checkbox("Headcount by Week", value=True, key="show_hc_chart")
-    show_donut           = st.checkbox("Terminations by Type", value=True, key="show_donut")
-    show_reasons         = st.checkbox("Termination Reasons", value=True, key="show_reasons")
-    show_hires_chart     = st.checkbox("New Hires by Week", value=True, key="show_hires")
-    show_rep_chart       = st.checkbox("Hires by Staffing Rep", value=True, key="show_rep")
-    show_title_chart     = st.checkbox("Hires by Job Title", value=True, key="show_title")
-    show_jobs_section    = st.checkbox("Jobs Overview", value=True, key="show_jobs")
-    st.markdown("**Retention**")
-    show_retention_7     = st.checkbox("7-Day Retention",  value=True, key="show_retention_7")
-    show_retention_30    = st.checkbox("30-Day Retention", value=True, key="show_retention_30")
-    show_retention_60    = st.checkbox("60-Day Retention", value=True, key="show_retention_60")
-    show_retention       = show_retention_7 or show_retention_30 or show_retention_60
-    show_term_tables     = st.checkbox("Termination Detail Tables", value=True, key="show_tables")
-    st.markdown("---")
-    st.markdown("KP Staffing · Activity Report")
 
 import base64
 
@@ -2156,6 +2129,34 @@ with st.sidebar:
             past_filter_start, past_filter_end = past_filter_end, past_filter_start
     else:
         past_filter_start, past_filter_end = None, None
+
+    st.markdown("---")
+    st.markdown("**Display Settings**")
+    show_headcount_card = st.checkbox("Starting Headcount", value=True, key="show_hc")
+    show_starts_card    = st.checkbox("Total Starts", value=True, key="show_starts")
+    show_inval_card     = st.checkbox("Involuntary Terms", value=True, key="show_inval")
+    show_vol_card       = st.checkbox("Voluntary Terms", value=True, key="show_vol")
+    show_layoff_card    = st.checkbox("Layoffs / Assign. Complete", value=True, key="show_layoff")
+    show_turnover_card  = st.checkbox("Total Turnover", value=True, key="show_turnover")
+    show_hours          = st.checkbox("Total Hours", value=True, key="show_hours")
+    show_converted      = st.checkbox("Converted Employees", value=True, key="show_converted")
+    st.markdown("---")
+    st.markdown("**Charts**")
+    show_headcount_chart = st.checkbox("Headcount by Week", value=True, key="show_hc_chart")
+    show_donut           = st.checkbox("Terminations by Type", value=True, key="show_donut")
+    show_reasons         = st.checkbox("Termination Reasons", value=True, key="show_reasons")
+    show_hires_chart     = st.checkbox("New Hires by Week", value=True, key="show_hires")
+    show_rep_chart       = st.checkbox("Hires by Staffing Rep", value=True, key="show_rep")
+    show_title_chart     = st.checkbox("Hires by Job Title", value=True, key="show_title")
+    show_jobs_section    = st.checkbox("Jobs Overview", value=True, key="show_jobs")
+    st.markdown("**Retention**")
+    show_retention_7     = st.checkbox("7-Day Retention",  value=True, key="show_retention_7")
+    show_retention_30    = st.checkbox("30-Day Retention", value=True, key="show_retention_30")
+    show_retention_60    = st.checkbox("60-Day Retention", value=True, key="show_retention_60")
+    show_retention       = show_retention_7 or show_retention_30 or show_retention_60
+    show_term_tables     = st.checkbox("Termination Detail Tables", value=True, key="show_tables")
+    st.markdown("---")
+    st.markdown("KP Staffing · Activity Report")
 
 # Apply date filters
 if cur_filter_start is not None:

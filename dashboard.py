@@ -1121,8 +1121,8 @@ def make_fig_retention_tiers(metrics, metrics_past=None, active_days=None):
     fig.add_trace(go.Bar(
         x=labels, y=pcts, name="Current",
         marker_color=colors,
-        text=[f"{p:.0f}%<br><span style='font-size:10px'>{r} of {e}</span>" for p, r, e in zip(pcts, retained, eligible)],
-        textposition="outside", textfont=dict(size=13, color="#131313"),
+        text=[f"<b>{p:.0f}%</b><br><span style='font-size:13px'><b>{r} of {e}</b></span>" for p, r, e in zip(pcts, retained, eligible)],
+        textposition="outside", textfont=dict(size=18, color="#131313"),
         hovertemplate="%{x}: %{y:.1f}% retained<br>%{customdata[0]} retained of %{customdata[1]} eligible<extra></extra>",
         customdata=list(zip(retained, eligible)),
     ))
@@ -1142,15 +1142,15 @@ def make_fig_retention_tiers(metrics, metrics_past=None, active_days=None):
     max_y = max(pcts) if pcts else 100
     fig.update_layout(
         plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
-        font=dict(color="#131313", size=12),
-        margin=dict(l=40, r=20, t=30, b=70),
-        yaxis=dict(range=[0, min(max_y * 1.25, 130)], title=dict(text="Retention %", font=dict(color="#131313")), showgrid=True,
-                   gridcolor="#eee", ticksuffix="%", tickfont=dict(color="#131313")),
-        xaxis=dict(title="", tickfont=dict(color="#131313")),
+        font=dict(color="#131313", size=14),
+        margin=dict(l=40, r=20, t=50, b=70),
+        yaxis=dict(range=[0, min(max_y * 1.35, 135)], title=dict(text="Retention %", font=dict(color="#131313")), showgrid=True,
+                   gridcolor="#eee", ticksuffix="%", tickfont=dict(color="#131313", size=13)),
+        xaxis=dict(title="", tickfont=dict(color="#131313", size=15)),
         barmode="group",
         showlegend=bool(metrics_past is not None and metrics_past["total_new_starts"] > 0),
         legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5),
-        height=340,
+        height=380,
     )
     return fig
 

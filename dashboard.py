@@ -2539,35 +2539,35 @@ with _export_col2:
 
 with _export_col1:
     if st.button("Generate PDF Report"):
-    with st.spinner("Building PDF..."):
-        _pdf_opts = {
-            "show_hours":    show_hours,
-            "show_converted":show_converted,
-            "show_hc_chart": show_headcount_chart,
-            "show_donut":    show_donut,
-            "show_reasons":  show_reasons,
-            "show_hires":    show_hires_chart,
-            "show_rep":      show_rep_chart,
-            "show_title":    show_title_chart,
-            "show_retention":   show_retention,
-            "show_retention_7": show_retention_7,
-            "show_retention_30":show_retention_30,
-            "show_retention_60":show_retention_60,
-            "show_jobs":     show_jobs_section,
-            "show_tables":   show_term_tables,
-            "period_label":  (f"{cur_filter_start.strftime('%b %d, %Y')} – {cur_filter_end.strftime('%b %d, %Y')}"
-                              if cur_filter_start and (cur_filter_start != _cur_min or cur_filter_end != _cur_max)
-                              else _active_data.get("date_range", "")),
-            "past_period_label": (f"{past_filter_start.strftime('%b %d, %Y')} – {past_filter_end.strftime('%b %d, %Y')}"
-                                  if past_filter_start and data_past and (past_filter_start != _past_min or past_filter_end != _past_max)
-                                  else (data_past or {}).get("date_range", "")),
-        }
-        _pdf_past_data    = data_past    if view_mode == "current" else None
-        _pdf_past_metrics = metrics_past if view_mode == "current" else None
-        pdf_buf = generate_pdf(
-            _active_data, _active_metrics,
-            data_past=_pdf_past_data, metrics_past=_pdf_past_metrics,
-            display_opts=_pdf_opts,
-        )
+        with st.spinner("Building PDF..."):
+            _pdf_opts = {
+                "show_hours":    show_hours,
+                "show_converted":show_converted,
+                "show_hc_chart": show_headcount_chart,
+                "show_donut":    show_donut,
+                "show_reasons":  show_reasons,
+                "show_hires":    show_hires_chart,
+                "show_rep":      show_rep_chart,
+                "show_title":    show_title_chart,
+                "show_retention":   show_retention,
+                "show_retention_7": show_retention_7,
+                "show_retention_30":show_retention_30,
+                "show_retention_60":show_retention_60,
+                "show_jobs":     show_jobs_section,
+                "show_tables":   show_term_tables,
+                "period_label":  (f"{cur_filter_start.strftime('%b %d, %Y')} – {cur_filter_end.strftime('%b %d, %Y')}"
+                                  if cur_filter_start and (cur_filter_start != _cur_min or cur_filter_end != _cur_max)
+                                  else _active_data.get("date_range", "")),
+                "past_period_label": (f"{past_filter_start.strftime('%b %d, %Y')} – {past_filter_end.strftime('%b %d, %Y')}"
+                                      if past_filter_start and data_past and (past_filter_start != _past_min or past_filter_end != _past_max)
+                                      else (data_past or {}).get("date_range", "")),
+            }
+            _pdf_past_data    = data_past    if view_mode == "current" else None
+            _pdf_past_metrics = metrics_past if view_mode == "current" else None
+            pdf_buf = generate_pdf(
+                _active_data, _active_metrics,
+                data_past=_pdf_past_data, metrics_past=_pdf_past_metrics,
+                display_opts=_pdf_opts,
+            )
         fname = f"{_active_data['company'].replace(' ', '_')}_staffing_report.pdf"
         st.download_button("⬇️ Download PDF", data=pdf_buf, file_name=fname, mime="application/pdf")

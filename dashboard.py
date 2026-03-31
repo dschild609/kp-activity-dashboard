@@ -1966,6 +1966,45 @@ if st.session_state.get("file_id") != file_id:
     st.session_state["file_id"]        = file_id
     st.session_state["parsed_data"]    = data
     st.session_state["parsed_metrics"] = metrics
+
+    # Auto-uncheck display settings when no data backs them
+    _tiers = metrics["retention_tiers"]
+    _has_terms   = not data["terms"].empty
+    _has_hires   = not data["hires"].empty
+    _has_hc      = not data["headcount"].empty
+    _has_hours   = metrics["total_hours"] > 0
+    _has_conv    = not data["converted"].empty
+    _has_jobs    = not data.get("jobs", pd.DataFrame()).empty
+    _has_inval   = metrics["inval_count"] > 0
+    _has_vol     = metrics["vol_count"] > 0
+    _has_layoff  = metrics["layoff_count"] > 0
+    _has_rep     = _has_hires and "Staffing Rep" in data["hires"].columns and data["hires"]["Staffing Rep"].notna().any()
+    _has_title   = _has_hires and "Job Title" in data["hires"].columns and data["hires"]["Job Title"].notna().any()
+    _has_reasons = _has_terms and "End Reason" in data["terms"].columns and data["terms"]["End Reason"].str.strip().ne("").any()
+
+    _auto = {
+        "show_hc":           _has_hc,
+        "show_starts":       _has_hires,
+        "show_inval":        _has_inval,
+        "show_vol":          _has_vol,
+        "show_layoff":       _has_layoff,
+        "show_turnover":     _has_inval or _has_vol,
+        "show_hours":        _has_hours,
+        "show_converted":    _has_conv,
+        "show_hc_chart":     _has_hc,
+        "show_donut":        _has_terms,
+        "show_reasons":      _has_reasons,
+        "show_hires":        _has_hires,
+        "show_rep":          _has_rep,
+        "show_title":        _has_title,
+        "show_jobs":         _has_jobs,
+        "show_retention_7":  _tiers[7]["pct"] is not None,
+        "show_retention_30": _tiers[30]["pct"] is not None,
+        "show_retention_60": _tiers[60]["pct"] is not None,
+        "show_tables":       _has_terms,
+    }
+    for _k, _v in _auto.items():
+        st.session_state[_k] = bool(_v)
 else:
     data    = st.session_state["parsed_data"]
     metrics = st.session_state["parsed_metrics"]

@@ -1383,68 +1383,314 @@ def make_pdf_fig_hires(hires_df):
 
 def generate_excel(data, metrics, data_past=None, metrics_past=None):
     import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
+    from openpyxl.utils import get_column_letter
+
+    # ── Color palette matching PDF ────────────────────────────────────────────
+    C_RED    = "940000"
+    C_MAROON = "7D1F32"
+    C_LIGHT  = "fdf0f0"
+    C_STRIPE = "faf7f7"
+    C_GRID   = "e8d8d8"
+    C_WHITE  = "FFFFFF"
+    C_GREY   = "888888"
+    C_GREEN  = "2e7d32"
+    C_DKRED  = "c62828"
+
+    def fill(hex_color):
+        return PatternFill("solid", fgColor=hex_color)
+
+    def border(color=C_GRID, top=False, bottom=False, left=False, right=False):
+        s = Side(style="thin", color=color)
+        n = None
+        return Border(top=s if top else n, bottom=s if bottom else n,
+                      left=s if left else n, right=s if right else n)
+
+    def thick_top(color=C_RED):
+        return Border(top=Side(style="medium", color=color))
+
+    def all_border():
+        s = Side(style="thin", color=C_GRID)
+        return Border(top=s, bottom=s, left=s, right=s)
+
+    wb = Workbook()
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 1: Report Summary  (mirrors PDF layout)
+    # ═══════════════════════════════════════════════════════════════════════════
+    ws = wb.active
+    ws.title = "Report Summary"
+
+    # Column widths
+    for col, w in [(1,28),(2,18),(3,18),(4,18)]:
+        ws.column_dimensions[get_column_letter(col)].width = w
+
+    tiers = metrics["retention_tiers"]
+    m_past = metrics_past or {}
+
+    def _delta_str(curr, prev, is_pct=False):
+        if prev is None or prev == 0:
+            return ""
+        diff = curr - prev
+        sign = "▲" if diff > 0 else ("▼" if diff < 0 else "—")
+        if is_pct:
+            return f"{sign} {abs(diff):.1f}pp vs prior"
+        return f"{sign} {abs(diff):g} vs prior"
+
+    def _delta_color(curr, prev, good="up"):
+        if prev is None:
+            return None
+        diff = curr - prev
+        if abs(diff) < 0.05:
+            return C_GREY
+        if good == "up":
+            return C_GREEN if diff > 0 else C_DKRED
+        return C_DKRED if diff > 0 else C_GREEN
+
+    row = 1
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    ws.merge_cells(f"A{row}:D{row}")
+    c = ws.cell(row, 1, "KP Staffing — Activity Report")
+    c.font = Font(bold=True, size=16, color=C_WHITE)
+    c.fill = fill(C_RED)
+    c.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    ws.row_dimensions[row].height = 28
+    row += 1
+
+    ws.merge_cells(f"A{row}:B{row}")
+    ws.cell(row, 1, data.get("company", "")).font = Font(bold=True, size=12)
+    ws.cell(row, 1).alignment = Alignment(indent=1)
+    ws.merge_cells(f"C{row}:D{row}")
+    ws.cell(row, 3, data.get("date_range", "")).font = Font(size=10, color=C_GREY)
+    ws.cell(row, 3).alignment = Alignment(horizontal="right")
+    ws.row_dimensions[row].height = 20
+    row += 2
+
+    def section_header(label):
+        nonlocal row
+        ws.merge_cells(f"A{row}:D{row}")
+        c = ws.cell(row, 1, f"  {label}")
+        c.font = Font(bold=True, size=10, color=C_WHITE)
+        c.fill = fill(C_MAROON)
+        c.alignment = Alignment(vertical="center")
+        ws.row_dimensions[row].height = 18
+        row += 1
+
+    def kpi_card(col, value, label, subtitle="", delta_val=None, delta_prev=None, good="up", is_pct=False):
+        """Write a KPI card starting at (row, col). Uses 3 rows."""
+        nonlocal row
+        r = row
+        # Value row
+        c = ws.cell(r, col, str(value))
+        c.font = Font(bold=True, size=18, color=C_RED)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = thick_top(C_RED)
+        c.fill = fill(C_WHITE)
+        ws.row_dimensions[r].height = 28
+        # Label row
+        c2 = ws.cell(r+1, col, label)
+        c2.font = Font(bold=True, size=10)
+        c2.alignment = Alignment(horizontal="center")
+        c2.fill = fill(C_LIGHT)
+        ws.row_dimensions[r+1].height = 16
+        # Subtitle / delta row
+        sub_text = subtitle
+        sub_color = C_GREY
+        if delta_val is not None and delta_prev is not None:
+            d_str = _delta_str(delta_val, delta_prev, is_pct)
+            d_col = _delta_color(delta_val, delta_prev, good)
+            if d_str:
+                sub_text = d_str
+                sub_color = d_col or C_GREY
+        c3 = ws.cell(r+2, col, sub_text)
+        c3.font = Font(size=8, color=sub_color)
+        c3.alignment = Alignment(horizontal="center")
+        c3.fill = fill(C_LIGHT)
+        ws.row_dimensions[r+2].height = 14
+
+    def card_row(cards):
+        """cards = list of (value, label, subtitle, delta_val, delta_prev, good, is_pct)"""
+        nonlocal row
+        for i, card in enumerate(cards):
+            kpi_card(i+1, *card)
+        row += 3
+
+    # ── Row 1: Workforce ──────────────────────────────────────────────────────
+    section_header("WORKFORCE")
+    _ph = metrics["starting_headcount"]
+    _ph_p = m_past.get("starting_headcount")
+    _ps = metrics["total_new_starts"]
+    _ps_p = m_past.get("total_new_starts")
+    _hrs = f"{metrics['total_hours']:,.0f}"
+    _hrs_p = m_past.get("total_hours")
+    cards1 = [
+        (_ph, "Starting Headcount", "at period start", _ph, _ph_p, "up", False),
+        (_ps, "Total Starts", "new placements", _ps, _ps_p, "up", False),
+        (_hrs, "Total Hours", "billed this period", metrics["total_hours"], _hrs_p, "up", False),
+    ]
+    card_row(cards1)
+    row += 1
+
+    # ── Row 2: Turnover ───────────────────────────────────────────────────────
+    section_header("TURNOVER")
+    _ic = metrics["inval_count"]; _ic_p = m_past.get("inval_count")
+    _vc = metrics["vol_count"];   _vc_p = m_past.get("vol_count")
+    _tp = metrics["total_turnover_pct"]; _tp_p = m_past.get("total_turnover_pct")
+    cards2 = [
+        (f"{metrics['inval_pct']:.1f}%", "Involuntary Terms",
+         f"{_ic} employees", _ic, _ic_p, "down", False),
+        (f"{metrics['vol_pct']:.1f}%", "Voluntary Terms",
+         f"{_vc} employees", _vc, _vc_p, "down", False),
+        (f"{_tp:.1f}%", "Total Turnover",
+         "excl. layoffs and conversions", _tp, _tp_p, "down", True),
+    ]
+    card_row(cards2)
+    row += 1
+
+    # ── Row 3: Retention ──────────────────────────────────────────────────────
+    section_header("RETENTION")
+    ret_cards = []
+    for days in (7, 30, 60):
+        t = tiers[days]
+        if t["pct"] is None:
+            ret_cards.append(("N/A", f"{days}-Day Retention", "Insufficient data", None, None, "up", True))
+        else:
+            _rp = t["pct"]; _rp_p = (m_past.get("retention_tiers") or {}).get(days, {}).get("pct")
+            ret_cards.append((f"{_rp:.0f}%", f"{days}-Day Retention",
+                              f"{t['retained']} of {t['eligible']} eligible",
+                              _rp, _rp_p, "up", True))
+    card_row(ret_cards)
+    row += 1
+
+    # ── Row 4: Exclusions ─────────────────────────────────────────────────────
+    section_header("EXCLUSIONS & CONVERSIONS")
+    excl_cards = [
+        (metrics["layoff_count"], "Layoffs / Assign. Complete",
+         "excluded from turnover",
+         metrics["layoff_count"], m_past.get("layoff_count"), "neutral", False),
+    ]
+    if not data["converted"].empty:
+        excl_cards.append((len(data["converted"]), "Converted Employees",
+                           "hired by client this period", None, None, "up", False))
+    card_row(excl_cards)
+    row += 2
+
+    # ── Termination tables ────────────────────────────────────────────────────
+    def write_table(df, title, start_row):
+        if df.empty:
+            return start_row
+        cols = [c for c in ["Name","End Reason","Comments","Start Date","End Date"] if c in df.columns]
+        r = start_row
+        ws.merge_cells(f"A{r}:D{r}")
+        c = ws.cell(r, 1, title)
+        c.font = Font(bold=True, size=11, color=C_WHITE)
+        c.fill = fill(C_RED)
+        c.alignment = Alignment(indent=1, vertical="center")
+        ws.row_dimensions[r].height = 18
+        r += 1
+        for ci, col in enumerate(cols, 1):
+            c = ws.cell(r, ci, col)
+            c.font = Font(bold=True, size=9, color="131313")
+            c.fill = fill("e8edf2")
+            c.border = all_border()
+            c.alignment = Alignment(horizontal="center")
+        ws.row_dimensions[r].height = 14
+        r += 1
+        for idx, (_, row_data) in enumerate(df.iterrows()):
+            bg = C_WHITE if idx % 2 == 0 else C_STRIPE
+            for ci, col in enumerate(cols, 1):
+                val = row_data.get(col, "")
+                if hasattr(val, "strftime"):
+                    val = val.strftime("%m/%d/%Y")
+                c = ws.cell(r, ci, str(val) if pd.notna(val) else "")
+                c.font = Font(size=9)
+                c.fill = fill(bg)
+                c.border = all_border()
+            r += 1
+        return r + 1
+
+    row = write_table(metrics["involuntary"], "Involuntary Terminations", row)
+    row = write_table(metrics["voluntary"],   "Voluntary Terminations",   row)
+    row = write_table(metrics["layoffs"],     "Layoffs / Assign. Complete", row)
+
+    # Early term detail
+    for days in (60, 30, 7):
+        t = tiers[days]
+        if t["pct"] is not None and not t["early_terms"].empty:
+            row = write_table(t["early_terms"], f"Early Exits — Within {days} Days", row)
+            break
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 2: New Hires
+    # ═══════════════════════════════════════════════════════════════════════════
+    if not data["hires"].empty:
+        ws2 = wb.create_sheet("New Hires")
+        _write_raw_sheet(ws2, data["hires"], "New Hires", C_RED, C_LIGHT, C_STRIPE, C_GRID)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 3: Terminations
+    # ═══════════════════════════════════════════════════════════════════════════
+    if not data["terms"].empty:
+        ws3 = wb.create_sheet("Terminations")
+        _write_raw_sheet(ws3, data["terms"], "Terminations", C_RED, C_LIGHT, C_STRIPE, C_GRID)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 4: Headcount by Week
+    # ═══════════════════════════════════════════════════════════════════════════
+    if not data["headcount"].empty:
+        ws4 = wb.create_sheet("Headcount by Week")
+        _write_raw_sheet(ws4, data["headcount"], "Headcount by Week", C_RED, C_LIGHT, C_STRIPE, C_GRID)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 5: Jobs
+    # ═══════════════════════════════════════════════════════════════════════════
+    if not data.get("jobs", pd.DataFrame()).empty:
+        ws5 = wb.create_sheet("Jobs")
+        _write_raw_sheet(ws5, data["jobs"], "Jobs Overview", C_RED, C_LIGHT, C_STRIPE, C_GRID)
+
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        # ── Sheet 1: KPI Summary ──────────────────────────────────────────────
-        tiers = metrics["retention_tiers"]
-        summary_rows = [
-            ("Period", data.get("date_range", "")),
-            ("Company", data.get("company", "")),
-            ("", ""),
-            ("Starting Headcount", metrics["starting_headcount"]),
-            ("Total New Starts", metrics["total_new_starts"]),
-            ("Total Hours", round(metrics["total_hours"], 1)),
-            ("", ""),
-            ("Involuntary Terms", metrics["inval_count"]),
-            ("Involuntary Term %", f"{metrics['inval_pct']:.1f}%"),
-            ("Voluntary Terms", metrics["vol_count"]),
-            ("Voluntary Term %", f"{metrics['vol_pct']:.1f}%"),
-            ("Total Turnover %", f"{metrics['total_turnover_pct']:.1f}%"),
-            ("Layoffs / Assignment Complete", metrics["layoff_count"]),
-            ("", ""),
-        ]
-        for days in (7, 30, 60):
-            t = tiers[days]
-            if t["pct"] is not None:
-                summary_rows.append((f"{days}-Day Retention",
-                                     f"{t['pct']:.1f}% ({t['retained']} of {t['eligible']} eligible)"))
-            else:
-                summary_rows.append((f"{days}-Day Retention", "N/A — Insufficient data"))
-        if not data["converted"].empty:
-            summary_rows.append(("", ""))
-            summary_rows.append(("Converted Employees", len(data["converted"])))
-
-        summary_df = pd.DataFrame(summary_rows, columns=["Metric", "Value"])
-        summary_df.to_excel(writer, sheet_name="KPI Summary", index=False)
-
-        # ── Sheet 2: New Hires ────────────────────────────────────────────────
-        if not data["hires"].empty:
-            data["hires"].to_excel(writer, sheet_name="New Hires", index=False)
-
-        # ── Sheet 3: Terminations ─────────────────────────────────────────────
-        if not data["terms"].empty:
-            data["terms"].to_excel(writer, sheet_name="Terminations", index=False)
-
-        # ── Sheet 4: Headcount by Week ────────────────────────────────────────
-        if not data["headcount"].empty:
-            data["headcount"].to_excel(writer, sheet_name="Headcount by Week", index=False)
-
-        # ── Sheet 5: Retention Detail ─────────────────────────────────────────
-        for days in (7, 30, 60):
-            t = tiers[days]
-            if t["pct"] is not None and not t["early_terms"].empty:
-                t["early_terms"].to_excel(writer, sheet_name=f"Early Exits ({days}d)", index=False)
-
-        # ── Sheet 6: Converted Employees ──────────────────────────────────────
-        if not data["converted"].empty:
-            data["converted"].to_excel(writer, sheet_name="Converted", index=False)
-
-        # ── Sheet 7: Jobs ─────────────────────────────────────────────────────
-        if not data.get("jobs", pd.DataFrame()).empty:
-            data["jobs"].to_excel(writer, sheet_name="Jobs", index=False)
-
+    wb.save(buf)
     buf.seek(0)
     return buf.read()
+
+
+def _write_raw_sheet(ws, df, title, C_RED, C_LIGHT, C_STRIPE, C_GRID):
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    def fill(h): return PatternFill("solid", fgColor=h)
+    def all_border():
+        s = Side(style="thin", color=C_GRID)
+        return Border(top=s, bottom=s, left=s, right=s)
+
+    cols = list(df.columns)
+    # Header row
+    ws.cell(1, 1, title).font = Font(bold=True, size=12, color="FFFFFF")
+    ws.cell(1, 1).fill = fill(C_RED)
+    ws.merge_cells(f"A1:{get_column_letter(len(cols))}1")
+    ws.row_dimensions[1].height = 20
+    # Column headers
+    for ci, col in enumerate(cols, 1):
+        c = ws.cell(2, ci, col)
+        c.font = Font(bold=True, size=9)
+        c.fill = fill("e8edf2")
+        c.border = all_border()
+        c.alignment = Alignment(horizontal="center")
+        ws.column_dimensions[get_column_letter(ci)].width = max(12, len(str(col)) + 2)
+    ws.row_dimensions[2].height = 14
+    # Data rows
+    for ri, (_, row) in enumerate(df.iterrows()):
+        bg = "FFFFFF" if ri % 2 == 0 else C_STRIPE
+        for ci, col in enumerate(cols, 1):
+            val = row[col]
+            if hasattr(val, "strftime"):
+                val = val.strftime("%m/%d/%Y")
+            c = ws.cell(ri+3, ci, str(val) if pd.notna(val) else "")
+            c.font = Font(size=9)
+            c.fill = fill(bg)
+            c.border = all_border()
 
 
 def generate_pdf(data, metrics, data_past=None, metrics_past=None, display_opts=None):

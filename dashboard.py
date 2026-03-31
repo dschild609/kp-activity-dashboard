@@ -237,7 +237,7 @@ def parse_report(file):
 
     # --- Summary counts: find row with "Total Placements" header, data is one row below ---
     summary_header_row = find_row(raw1, "Total Placements")
-    if summary_header_row is not None:
+    if summary_header_row is not None and summary_header_row + 1 < len(raw1):
         hdr_vals = [str(v).strip() if pd.notna(v) else "" for v in raw1.iloc[summary_header_row]]
         data_row = raw1.iloc[summary_header_row + 1]
         total_placements_raw = safe_int(data_row[0])
@@ -845,7 +845,11 @@ def make_fig_reasons(df, color_seq, df_past=None):
         past  = past_f.groupby("End Reason")["Count"].sum().reset_index(name="Prior")
         merged = curr.merge(past, on="End Reason", how="outer").fillna(0)
         merged = merged.sort_values("Current", ascending=True)
-        max_count = int(max(merged["Current"].max(), merged["Prior"].max()))
+        _cm = merged["Current"].max()
+        _pm = merged["Prior"].max()
+        max_count = int(max(_cm if pd.notna(_cm) else 0, _pm if pd.notna(_pm) else 0))
+        if max_count == 0:
+            return go.Figure()
         tick_step = max(1, round(max_count / 10))
         num_reasons = len(merged)
         fig = go.Figure()
@@ -873,7 +877,10 @@ def make_fig_reasons(df, color_seq, df_past=None):
         )
     else:
         grouped = curr.sort_values("Current", ascending=True)
-        max_count = int(grouped["Current"].max())
+        _cm = grouped["Current"].max()
+        max_count = int(_cm) if pd.notna(_cm) and _cm > 0 else 0
+        if max_count == 0:
+            return go.Figure()
         tick_step = max(1, round(max_count / 10))
         num_reasons = len(grouped)
         fig = px.bar(grouped, x="Current", y="End Reason", orientation="h",
@@ -972,7 +979,8 @@ def make_fig_hires(hires_df):
     df["Week"] = df["Start Date"].dt.to_period("W").dt.start_time
     weekly = df.groupby("Week").size().reset_index(name="New Hires")
     weekly["Week Label"] = weekly["Week"].dt.strftime("%b %d")
-    max_val = weekly["New Hires"].max()
+    _mv = weekly["New Hires"].max()
+    max_val = int(_mv) if pd.notna(_mv) and _mv > 0 else 1
     fig = px.bar(weekly, x="Week Label", y="New Hires",
                  color_discrete_sequence=["#7D1F32"], text="New Hires")
     fig.update_traces(textposition="outside")
@@ -1891,7 +1899,10 @@ if uploaded is None:
     st.stop()
 
 # ─── Parse current file ────────────────────────────────────────────────────────
-file_id = (uploaded.name, uploaded.size)
+import hashlib as _hashlib
+_file_bytes = uploaded.getvalue()
+file_id = _hashlib.md5(_file_bytes).hexdigest()
+uploaded.seek(0)
 if st.session_state.get("file_id") != file_id:
     try:
         data    = parse_report(uploaded)
@@ -1911,7 +1922,9 @@ else:
 data_past    = None
 metrics_past = None
 if uploaded_past is not None:
-    file_id_past = (uploaded_past.name, uploaded_past.size)
+    _past_bytes = uploaded_past.getvalue()
+    file_id_past = _hashlib.md5(_past_bytes).hexdigest()
+    uploaded_past.seek(0)
     if st.session_state.get("file_id_past") != file_id_past:
         try:
             data_past    = parse_report(uploaded_past)

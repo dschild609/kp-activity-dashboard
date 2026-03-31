@@ -13,6 +13,27 @@ from reportlab.platypus import Image as RLImage
 
 st.set_page_config(page_title="KP Staffing Dashboard", layout="wide", page_icon="📊")
 
+# ── Password gate ──────────────────────────────────────────────────────────────
+def _check_password():
+    if st.session_state.get("authenticated"):
+        return True
+    st.image("kp_logo.png", width=180)
+    st.markdown("## KP Staffing Activity Dashboard")
+    st.markdown("Please enter the password to continue.")
+    pw = st.text_input("Password", type="password", key="_login_pw")
+    if st.button("Login"):
+        correct = st.secrets.get("APP_PASSWORD", "kpstaffing2025")
+        if pw == correct:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    return False
+
+if not _check_password():
+    st.stop()
+# ── End password gate ──────────────────────────────────────────────────────────
+
 # KP Staffing brand colors
 KP_CRIMSON  = "#940000"
 KP_DARK     = "#7D1F32"

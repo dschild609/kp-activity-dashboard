@@ -1563,18 +1563,20 @@ def generate_pdf(data, metrics, data_past=None, metrics_past=None, display_opts=
     # ── Charts ────────────────────────────────────────────────────────────────
     def add_chart(fig, label, w=9.8*inch, h=2.5*inch, center=False):
         try:
+            import plotly.io as pio
             px_w = int(w / inch * 110)
             px_h = int(h / inch * 110)
-            img_bytes = fig.to_image(format="png", width=px_w, height=px_h, scale=2)
+            img_bytes = pio.to_image(fig, format="png", width=px_w, height=px_h, scale=2, engine="kaleido")
             story.append(Paragraph(label, h2_s))
             img = RLImage(io.BytesIO(img_bytes), width=w, height=h)
             if center:
-                from reportlab.platypus import KeepInFrame
                 img.hAlign = "CENTER"
             story.append(img)
             story.append(Spacer(1, 8))
-        except Exception:
-            pass
+        except Exception as e:
+            story.append(Paragraph(label, h2_s))
+            story.append(Paragraph(f"[Chart unavailable: {e}]", styles["Normal"]))
+            story.append(Spacer(1, 8))
 
     if _show_hc_chart and not data["headcount"].empty:
         story.append(PageBreak())

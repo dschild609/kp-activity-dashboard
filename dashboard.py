@@ -1381,6 +1381,72 @@ def make_pdf_fig_hires(hires_df):
     return fig
 
 
+def generate_excel(data, metrics, data_past=None, metrics_past=None):
+    import io
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        # ── Sheet 1: KPI Summary ──────────────────────────────────────────────
+        tiers = metrics["retention_tiers"]
+        summary_rows = [
+            ("Period", data.get("date_range", "")),
+            ("Company", data.get("company", "")),
+            ("", ""),
+            ("Starting Headcount", metrics["starting_headcount"]),
+            ("Total New Starts", metrics["total_new_starts"]),
+            ("Total Hours", round(metrics["total_hours"], 1)),
+            ("", ""),
+            ("Involuntary Terms", metrics["inval_count"]),
+            ("Involuntary Term %", f"{metrics['inval_pct']:.1f}%"),
+            ("Voluntary Terms", metrics["vol_count"]),
+            ("Voluntary Term %", f"{metrics['vol_pct']:.1f}%"),
+            ("Total Turnover %", f"{metrics['total_turnover_pct']:.1f}%"),
+            ("Layoffs / Assignment Complete", metrics["layoff_count"]),
+            ("", ""),
+        ]
+        for days in (7, 30, 60):
+            t = tiers[days]
+            if t["pct"] is not None:
+                summary_rows.append((f"{days}-Day Retention",
+                                     f"{t['pct']:.1f}% ({t['retained']} of {t['eligible']} eligible)"))
+            else:
+                summary_rows.append((f"{days}-Day Retention", "N/A — Insufficient data"))
+        if not data["converted"].empty:
+            summary_rows.append(("", ""))
+            summary_rows.append(("Converted Employees", len(data["converted"])))
+
+        summary_df = pd.DataFrame(summary_rows, columns=["Metric", "Value"])
+        summary_df.to_excel(writer, sheet_name="KPI Summary", index=False)
+
+        # ── Sheet 2: New Hires ────────────────────────────────────────────────
+        if not data["hires"].empty:
+            data["hires"].to_excel(writer, sheet_name="New Hires", index=False)
+
+        # ── Sheet 3: Terminations ─────────────────────────────────────────────
+        if not data["terms"].empty:
+            data["terms"].to_excel(writer, sheet_name="Terminations", index=False)
+
+        # ── Sheet 4: Headcount by Week ────────────────────────────────────────
+        if not data["headcount"].empty:
+            data["headcount"].to_excel(writer, sheet_name="Headcount by Week", index=False)
+
+        # ── Sheet 5: Retention Detail ─────────────────────────────────────────
+        for days in (7, 30, 60):
+            t = tiers[days]
+            if t["pct"] is not None and not t["early_terms"].empty:
+                t["early_terms"].to_excel(writer, sheet_name=f"Early Exits ({days}d)", index=False)
+
+        # ── Sheet 6: Converted Employees ──────────────────────────────────────
+        if not data["converted"].empty:
+            data["converted"].to_excel(writer, sheet_name="Converted", index=False)
+
+        # ── Sheet 7: Jobs ─────────────────────────────────────────────────────
+        if not data.get("jobs", pd.DataFrame()).empty:
+            data["jobs"].to_excel(writer, sheet_name="Jobs", index=False)
+
+    buf.seek(0)
+    return buf.read()
+
+
 def generate_pdf(data, metrics, data_past=None, metrics_past=None, display_opts=None):
     import re, html as html_lib
     # Default all display options to True if not provided
@@ -2457,10 +2523,22 @@ if show_term_tables:
         st.dataframe(style_table(format_terms_display(m["layoffs"])), use_container_width=True, hide_index=True)
 
 
-# ─── PDF Download ─────────────────────────────────────────────────────────────
+# ─── Export ───────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("### 📄 Export Report")
-if st.button("Generate PDF Report"):
+_export_col1, _export_col2 = st.columns([1, 1])
+
+with _export_col2:
+    _xl_fname = f"{_active_data['company'].replace(' ', '_')}_staffing_report.xlsx"
+    with st.spinner(""):
+        _xl_buf = generate_excel(_active_data, _active_metrics,
+                                 data_past=(data_past if view_mode == "current" else None),
+                                 metrics_past=(metrics_past if view_mode == "current" else None))
+    st.download_button("⬇️ Download Excel", data=_xl_buf, file_name=_xl_fname,
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+with _export_col1:
+    if st.button("Generate PDF Report"):
     with st.spinner("Building PDF..."):
         _pdf_opts = {
             "show_hours":    show_hours,
@@ -2491,5 +2569,5 @@ if st.button("Generate PDF Report"):
             data_past=_pdf_past_data, metrics_past=_pdf_past_metrics,
             display_opts=_pdf_opts,
         )
-    fname = f"{_active_data['company'].replace(' ', '_')}_staffing_report.pdf"
-    st.download_button("⬇️ Download PDF", data=pdf_buf, file_name=fname, mime="application/pdf")
+        fname = f"{_active_data['company'].replace(' ', '_')}_staffing_report.pdf"
+        st.download_button("⬇️ Download PDF", data=pdf_buf, file_name=fname, mime="application/pdf")

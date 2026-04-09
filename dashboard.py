@@ -564,6 +564,17 @@ def parse_report(file):
                             .drop_duplicates("Name", keep="last")
                             .reset_index(drop=True))
 
+    # Cross-source dedup: if a name appears in both converted_df and terms_df,
+    # the converted record wins — remove them from terms and keep earliest converted date
+    if not converted_df.empty and not terms_df.empty:
+        _conv_names = set(converted_df["Name"].tolist())
+        terms_df = terms_df[~terms_df["Name"].isin(_conv_names)].reset_index(drop=True)
+        # Re-sort converted to ensure earliest Converted Date is kept
+        if "Converted Date" in converted_df.columns:
+            converted_df = (converted_df.sort_values("Converted Date")
+                                        .drop_duplicates("Name", keep="first")
+                                        .reset_index(drop=True))
+
     # --- Jobs section (optional — present in some report formats) ---
     jobs_row = find_row(raw1, "Jobs")
     jobs_df = pd.DataFrame()

@@ -1654,6 +1654,15 @@ def generate_excel(data, metrics, data_past=None, metrics_past=None):
     row = write_table(metrics["voluntary"],   "Voluntary Terminations",   row)
     row = write_table(metrics["layoffs"],     "Layoffs / Assign. Complete", row)
 
+    # Conversions table on Summary sheet
+    if not data["converted"].empty:
+        _conv_xl = data["converted"].copy()
+        _conv_xl_cols = [c for c in ["Name", "Job Title", "Staffing Rep", "Converted Date", "Start Date"] if c in _conv_xl.columns]
+        for _dc in ["Converted Date", "Start Date"]:
+            if _dc in _conv_xl.columns:
+                _conv_xl[_dc] = pd.to_datetime(_conv_xl[_dc], errors="coerce").dt.strftime("%m/%d/%Y")
+        row = write_table(_conv_xl[_conv_xl_cols], "Conversions to Permanent", row)
+
     # Early term detail
     for days in (60, 30, 7):
         t = tiers[days]
@@ -1683,11 +1692,23 @@ def generate_excel(data, metrics, data_past=None, metrics_past=None):
         _write_raw_sheet(ws4, data["headcount"], "Headcount by Week", C_RED, C_LIGHT, C_STRIPE, C_GRID)
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # SHEET 5: Jobs
+    # SHEET 5: Conversions
+    # ═══════════════════════════════════════════════════════════════════════════
+    if not data["converted"].empty:
+        ws5 = wb.create_sheet("Conversions")
+        _conv_s = data["converted"].copy()
+        _conv_s_cols = [c for c in ["Name", "Job Title", "Staffing Rep", "Converted Date", "Start Date"] if c in _conv_s.columns]
+        for _dc in ["Converted Date", "Start Date"]:
+            if _dc in _conv_s.columns:
+                _conv_s[_dc] = pd.to_datetime(_conv_s[_dc], errors="coerce").dt.strftime("%m/%d/%Y")
+        _write_raw_sheet(ws5, _conv_s[_conv_s_cols], "Conversions to Permanent", C_RED, C_LIGHT, C_STRIPE, C_GRID)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 6: Jobs
     # ═══════════════════════════════════════════════════════════════════════════
     if not data.get("jobs", pd.DataFrame()).empty:
-        ws5 = wb.create_sheet("Jobs")
-        _write_raw_sheet(ws5, data["jobs"], "Jobs Overview", C_RED, C_LIGHT, C_STRIPE, C_GRID)
+        ws6 = wb.create_sheet("Jobs")
+        _write_raw_sheet(ws6, data["jobs"], "Jobs Overview", C_RED, C_LIGHT, C_STRIPE, C_GRID)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -2234,6 +2255,10 @@ def generate_pdf(data, metrics, data_past=None, metrics_past=None, display_opts=
         add_table(metrics["involuntary"], "Involuntary Terminations (Ended by Employer)")
         add_table(metrics["voluntary"],   "Voluntary Terminations (Ended by Candidate)")
         add_table(metrics["layoffs"],     "Layoffs / Assignment Complete (Excluded from Turnover)")
+        if not data["converted"].empty:
+            _conv_pdf = data["converted"].copy()
+            _conv_pdf_cols = [c for c in ["Name", "Job Title", "Staffing Rep", "Converted Date", "Start Date"] if c in _conv_pdf.columns]
+            add_table(_conv_pdf[_conv_pdf_cols], "Conversions to Permanent")
 
 
     doc.build(story)

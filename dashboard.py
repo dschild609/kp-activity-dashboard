@@ -501,6 +501,21 @@ def parse_report(file):
     ended2_df    = pd.DataFrame(ended2)
     converted_df = pd.DataFrame(converted)
 
+    # Deduplicate each raw list: keep earliest start/converted date per person,
+    # latest end date per person, so no one is counted twice
+    if not hires_df.empty and "Start Date" in hires_df.columns:
+        hires_df = (hires_df.sort_values("Start Date")
+                            .drop_duplicates("Name", keep="first")
+                            .reset_index(drop=True))
+    if not ended2_df.empty and "End Date" in ended2_df.columns:
+        ended2_df = (ended2_df.sort_values("End Date", na_position="first")
+                              .drop_duplicates("Name", keep="last")
+                              .reset_index(drop=True))
+    if not converted_df.empty and "Converted Date" in converted_df.columns:
+        converted_df = (converted_df.sort_values("Converted Date")
+                                    .drop_duplicates("Name", keep="first")
+                                    .reset_index(drop=True))
+
     # Remove promoted employees from new hires — internal transfers are not new starts
     if promoted_names and not hires_df.empty:
         removed_hires    = hires_df[hires_df["Name"].isin(promoted_names)]
@@ -541,6 +556,13 @@ def parse_report(file):
         if "End Date" not in terms_df.columns and not ended2_df.empty:
             terms_df = terms_df.merge(ended2_df[["Name", "End Date"]].drop_duplicates("Name"),
                                       on="Name", how="left")
+
+    # Deduplicate terms: one record per person — keep latest End Date so most recent
+    # termination is used for retention calculations and detail tables
+    if not terms_df.empty and "End Date" in terms_df.columns:
+        terms_df = (terms_df.sort_values("End Date", na_position="first")
+                            .drop_duplicates("Name", keep="last")
+                            .reset_index(drop=True))
 
     # --- Jobs section (optional — present in some report formats) ---
     jobs_row = find_row(raw1, "Jobs")
@@ -1016,7 +1038,7 @@ def make_fig_hires(hires_df):
         return go.Figure()
     df = hires_df.copy()
     df["Week"] = df["Start Date"].dt.to_period("W").dt.start_time
-    weekly = df.groupby("Week").size().reset_index(name="New Hires")
+    weekly = df.groupby("Week")["Name"].nunique().reset_index(name="New Hires")
     weekly["Week Label"] = weekly["Week"].dt.strftime("%b %d")
     _mv = weekly["New Hires"].max()
     max_val = int(_mv) if pd.notna(_mv) and _mv > 0 else 1
@@ -1363,7 +1385,7 @@ def make_pdf_fig_hires(hires_df):
         return go.Figure()
     df = hires_df.copy()
     df["Week"] = df["Start Date"].dt.to_period("W").dt.start_time
-    weekly = df.groupby("Week").size().reset_index(name="New Hires")
+    weekly = df.groupby("Week")["Name"].nunique().reset_index(name="New Hires")
     weekly["Label"] = weekly["Week"].dt.strftime("%b %d")
     fig = go.Figure(go.Bar(
         x=weekly["Label"], y=weekly["New Hires"],

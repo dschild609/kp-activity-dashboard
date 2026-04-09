@@ -564,16 +564,22 @@ def parse_report(file):
                             .drop_duplicates("Name", keep="last")
                             .reset_index(drop=True))
 
-    # Cross-source dedup: if a name appears in both converted_df and terms_df,
-    # the converted record wins — remove them from terms and keep earliest converted date
-    if not converted_df.empty and not terms_df.empty:
-        _conv_names = set(converted_df["Name"].tolist())
-        terms_df = terms_df[~terms_df["Name"].isin(_conv_names)].reset_index(drop=True)
-        # Re-sort converted to ensure earliest Converted Date is kept
-        if "Converted Date" in converted_df.columns:
-            converted_df = (converted_df.sort_values("Converted Date")
-                                        .drop_duplicates("Name", keep="first")
-                                        .reset_index(drop=True))
+    # Derive converted_df from Page 1 End Reasons — "Converted to Permanent" is the
+    # authoritative source; Sheet 2's converted column mixes in Changed Title/Promoted
+    # entries and duplicates that inflate the count.
+    if not terms_df.empty and "End Reason" in terms_df.columns:
+        _conv_mask = terms_df["End Reason"].str.strip().str.lower() == "converted to permanent"
+        if _conv_mask.any():
+            _conv_cols = ["Name"] + [c for c in ["End Date", "Start Date", "Job Title", "Staffing Rep"] if c in terms_df.columns]
+            converted_df = terms_df.loc[_conv_mask, _conv_cols].copy()
+            converted_df = converted_df.rename(columns={"End Date": "Converted Date"})
+            # Keep earliest converted date per person
+            if "Converted Date" in converted_df.columns:
+                converted_df = (converted_df.sort_values("Converted Date", na_position="last")
+                                            .drop_duplicates("Name", keep="first")
+                                            .reset_index(drop=True))
+        # Remove converted employees from terms so they don't appear in turnover counts
+        terms_df = terms_df[~_conv_mask].reset_index(drop=True)
 
     # --- Jobs section (optional — present in some report formats) ---
     jobs_row = find_row(raw1, "Jobs")
@@ -2774,10 +2780,12 @@ if show_jobs_section and "jobs" in ad and not ad["jobs"].empty:
 # ─── Termination Tables ───────────────────────────────────────────────────────
 if show_term_tables:
     st.markdown('<div class="section-header">Termination Detail</div>', unsafe_allow_html=True)
-    tab1, tab2, tab3 = st.tabs([
+    _conv_count = len(ad["converted"]) if not ad["converted"].empty else 0
+    tab1, tab2, tab3, tab4 = st.tabs([
         f"🔴 Involuntary ({m['inval_count']})",
         f"🔵 Voluntary ({m['vol_count']})",
         f"🟡 Layoffs / Assignment Complete ({m['layoff_count']})",
+        f"🟢 Conversions ({_conv_count})",
     ])
     def style_table(df):
         return df.style.set_properties(**{
@@ -2801,6 +2809,16 @@ if show_term_tables:
         st.dataframe(style_table(format_terms_display(m["voluntary"])), use_container_width=True, hide_index=True)
     with tab3:
         st.dataframe(style_table(format_terms_display(m["layoffs"])), use_container_width=True, hide_index=True)
+    with tab4:
+        if ad["converted"].empty:
+            st.info("No conversions recorded for this period.")
+        else:
+            _conv_disp = ad["converted"].copy()
+            _conv_cols = [c for c in ["Name", "Job Title", "Staffing Rep", "Converted Date", "Start Date"] if c in _conv_disp.columns]
+            for _dc in ["Converted Date", "Start Date"]:
+                if _dc in _conv_disp.columns:
+                    _conv_disp[_dc] = pd.to_datetime(_conv_disp[_dc], errors="coerce").dt.strftime("%m/%d/%Y")
+            st.dataframe(style_table(_conv_disp[_conv_cols]), use_container_width=True, hide_index=True)
 
 
 # ─── Export ───────────────────────────────────────────────────────────────────

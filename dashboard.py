@@ -380,12 +380,18 @@ def parse_report(file):
         # Strip DONS entirely — they never happened
         dons_count_raw = int(terms_df[terms_df["Type"] == "DONS"]["Count"].sum())
         terms_df = terms_df[terms_df["Type"] != "DONS"].reset_index(drop=True)
+        # Extract "Converted to Permanent" BEFORE stripping promoted —
+        # these are true conversions, not internal title changes
+        _conv_from_terms = terms_df[
+            terms_df["End Reason"].str.strip().str.lower() == "converted to permanent"
+        ].copy()
         # Strip Promoted — internal transfers, not true terms or new starts
         promoted_names = set(terms_df[terms_df["Type"] == "Promoted"]["Name"].tolist())
         terms_df = terms_df[terms_df["Type"] != "Promoted"].reset_index(drop=True)
     else:
         dons_count_raw = 0
         promoted_names = set()
+        _conv_from_terms = pd.DataFrame()
 
     # --- Sheet 2: detect column positions from header row ---
     # Find the row containing "Start Date" in any column
@@ -567,19 +573,24 @@ def parse_report(file):
     # Derive converted_df from Page 1 End Reasons — "Converted to Permanent" is the
     # authoritative source; Sheet 2's converted column mixes in Changed Title/Promoted
     # entries and duplicates that inflate the count.
-    if not terms_df.empty and "End Reason" in terms_df.columns:
-        _conv_mask = terms_df["End Reason"].str.strip().str.lower() == "converted to permanent"
-        if _conv_mask.any():
-            _conv_cols = ["Name"] + [c for c in ["End Date", "Start Date", "Job Title", "Staffing Rep"] if c in terms_df.columns]
-            converted_df = terms_df.loc[_conv_mask, _conv_cols].copy()
-            converted_df = converted_df.rename(columns={"End Date": "Converted Date"})
-            # Keep earliest converted date per person
-            if "Converted Date" in converted_df.columns:
-                converted_df = (converted_df.sort_values("Converted Date", na_position="last")
-                                            .drop_duplicates("Name", keep="first")
-                                            .reset_index(drop=True))
-        # Remove converted employees from terms so they don't appear in turnover counts
-        terms_df = terms_df[~_conv_mask].reset_index(drop=True)
+    # Use _conv_from_terms (extracted BEFORE promoted records were stripped)
+    # since terms_df no longer contains "Converted to Permanent" records.
+    if not _conv_from_terms.empty:
+        if "Start Date" not in _conv_from_terms.columns and not hires_df.empty:
+            _conv_from_terms = _conv_from_terms.merge(
+                hires_df[["Name", "Start Date"]].drop_duplicates("Name"),
+                on="Name", how="left")
+        if "End Date" not in _conv_from_terms.columns and not ended2_df.empty:
+            _conv_from_terms = _conv_from_terms.merge(
+                ended2_df[["Name", "End Date"]].drop_duplicates("Name"),
+                on="Name", how="left")
+        _conv_cols = ["Name"] + [c for c in ["End Date", "Start Date", "Job Title", "Staffing Rep"] if c in _conv_from_terms.columns]
+        converted_df = _conv_from_terms[_conv_cols].copy()
+        converted_df = converted_df.rename(columns={"End Date": "Converted Date"})
+        if "Converted Date" in converted_df.columns:
+            converted_df = (converted_df.sort_values("Converted Date", na_position="last")
+                                        .drop_duplicates("Name", keep="first")
+                                        .reset_index(drop=True))
 
     # --- Jobs section (optional — present in some report formats) ---
     jobs_row = find_row(raw1, "Jobs")

@@ -691,6 +691,33 @@ def filter_data_by_dates(data, start_date, end_date):
     return d
 
 
+def filter_data_by_reps(data, allowed_reps):
+    """Return a copy of data filtered to only include records for the given staffing reps."""
+    import copy
+    d = copy.copy(data)
+    allowed = set(allowed_reps)
+
+    for key in ("hires", "terms", "converted"):
+        df = data[key].copy()
+        if not df.empty and "Staffing Rep" in df.columns:
+            df = df[df["Staffing Rep"].isin(allowed)].reset_index(drop=True)
+        d[key] = df
+
+    return d
+
+
+def collect_staffing_reps(data):
+    """Return a sorted list of unique staffing reps across hires, terms, and converted."""
+    reps = set()
+    for key in ("hires", "terms", "converted"):
+        df = data.get(key, pd.DataFrame())
+        if not df.empty and "Staffing Rep" in df.columns:
+            reps.update(df["Staffing Rep"].dropna().astype(str).str.strip().tolist())
+    reps.discard("")
+    reps.discard("Staffing Rep")
+    return sorted(reps)
+
+
 def compute_metrics(data):
     terms  = data["terms"]
     hires  = data["hires"]
@@ -2476,21 +2503,46 @@ with st.sidebar:
     show_retention_60    = st.checkbox("60-Day Retention", value=True, key="show_retention_60")
     show_retention       = show_retention_7 or show_retention_30 or show_retention_60
     show_term_tables     = st.checkbox("Termination Detail Tables", value=True, key="show_tables")
+
+    # ─── Staffing Rep Filter ──────────────────────────────────────────────────
+    _all_reps = collect_staffing_reps(data)
+    if _all_reps:
+        st.markdown("---")
+        st.markdown("**👥 Staffing Reps**")
+        st.caption("Uncheck a rep to exclude their employees from all metrics")
+        _selected_reps = []
+        for _rep in _all_reps:
+            _safe_key = "rep_filter_" + "".join(c if c.isalnum() else "_" for c in _rep)
+            if st.checkbox(_rep, value=True, key=_safe_key):
+                _selected_reps.append(_rep)
+    else:
+        _selected_reps = None
+
     st.markdown("---")
     st.markdown("KP Staffing · Activity Report")
 
 # Apply date filters
 if cur_filter_start is not None:
     data_filtered = filter_data_by_dates(data, cur_filter_start, cur_filter_end)
-    metrics = compute_metrics(data_filtered)
 else:
     data_filtered = data
 
+# Apply staffing rep filter
+if _selected_reps is not None and len(_selected_reps) < len(_all_reps):
+    data_filtered = filter_data_by_reps(data_filtered, _selected_reps)
+
+metrics = compute_metrics(data_filtered)
+
 if data_past is not None and past_filter_start is not None:
     data_past_filtered = filter_data_by_dates(data_past, past_filter_start, past_filter_end)
+    if _selected_reps is not None and len(_selected_reps) < len(_all_reps):
+        data_past_filtered = filter_data_by_reps(data_past_filtered, _selected_reps)
     metrics_past = compute_metrics(data_past_filtered)
 else:
     data_past_filtered = data_past
+    if data_past_filtered is not None and _selected_reps is not None and len(_selected_reps) < len(_all_reps):
+        data_past_filtered = filter_data_by_reps(data_past_filtered, _selected_reps)
+        metrics_past = compute_metrics(data_past_filtered)
 
 # ─── Header ───────────────────────────────────────────────────────────────────
 with open("kp_logo.png", "rb") as f:

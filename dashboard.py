@@ -2506,7 +2506,10 @@ with st.sidebar:
     show_term_tables     = st.checkbox("Termination Detail Tables", value=True, key="show_tables")
 
     # ─── Staffing Rep Filter ──────────────────────────────────────────────────
-    _all_reps = collect_staffing_reps(data)
+    # Collect reps from both current and past periods so cross-period reps
+    # all get a checkbox and aren't silently filtered out of past data.
+    _all_reps = sorted(set(collect_staffing_reps(data)) |
+                       (set(collect_staffing_reps(data_past)) if data_past is not None else set()))
     if _all_reps:
         st.markdown("---")
         st.markdown("**👥 Staffing Reps**")

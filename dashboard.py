@@ -752,7 +752,8 @@ def compute_metrics(data):
         starting_headcount = max(first_week_headcount - new_hires_wk1, 1)
 
     # Total at-risk = starting headcount + total starts (DONS already stripped from both)
-    total_starts = data["new_placements_raw"]
+    # Use len(hires) so the rep filter is respected
+    total_starts = len(hires) if not hires.empty else 0
     if starting_headcount:
         at_risk = starting_headcount + total_starts
     else:
@@ -1960,9 +1961,9 @@ def generate_pdf(data, metrics, data_past=None, metrics_past=None, display_opts=
     _add_delta(hc_cell, curr_hc - past_hc, False, "up")
     row1.append(hc_cell)
 
-    starts_cell = _make_card_cell(data["new_placements_raw"], "Total Starts", "new placements this period")
+    starts_cell = _make_card_cell(metrics["total_new_starts"], "Total Starts", "new placements this period")
     if metrics_past and data_past:
-        _add_delta(starts_cell, data["new_placements_raw"] - data_past["new_placements_raw"], False, "up")
+        _add_delta(starts_cell, metrics["total_new_starts"] - metrics_past["total_new_starts"], False, "up")
     row1.append(starts_cell)
 
     if _show_hours:
@@ -2639,7 +2640,7 @@ if _show_deltas:
     d["hc"]          = _delta_html(
         (metrics["starting_headcount"] or metrics["adj_placements"]) -
         (p["starting_headcount"] or p["adj_placements"]), good="up")
-    d["starts"]      = _delta_html(data["new_placements_raw"] - data_past["new_placements_raw"], good="up")
+    d["starts"]      = _delta_html(metrics["total_new_starts"] - p["total_new_starts"], good="up")
     d["inval_cnt"]   = _delta_html(metrics["inval_count"]  - p["inval_count"],  good="down")
     d["inval_pct"]   = _delta_html(metrics["inval_pct"]    - p["inval_pct"],    good="down", is_pct=True)
     d["vol_cnt"]     = _delta_html(metrics["vol_count"]    - p["vol_count"],    good="down")
@@ -2675,7 +2676,7 @@ if show_headcount_card:
     _row1.append(("simple", m["starting_headcount"] or m["adj_placements"],
                   "Starting Headcount", "headcount at period start", d.get("hc", "")))
 if show_starts_card:
-    _row1.append(("simple", ad.get("new_placements_raw", 0), "Total Starts",
+    _row1.append(("simple", m["total_new_starts"], "Total Starts",
                   "new placements this period", d.get("starts", "")))
 if show_hours:
     _row1.append(("simple", total_hours_val, "Total Hours", "billed this period",

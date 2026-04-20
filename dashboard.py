@@ -789,6 +789,18 @@ def compute_metrics(data):
         _pool = hire_df.copy()  # cascades: each tier only evaluates survivors of prior tier
 
         for days in (7, 30, 60):
+            # Short-circuit when pool is empty — empty DataFrames lose their dtypes,
+            # causing the Start Date + Timedelta comparison to fail on later tiers
+            if _pool.empty:
+                retention_tiers[days] = {
+                    "early_terms": pd.DataFrame(),
+                    "early_count": 0,
+                    "retained": 0,
+                    "eligible": 0,
+                    "pct": None,
+                }
+                continue
+
             eligible = _pool[
                 _pool["Start Date"] + pd.Timedelta(days=days) <= pd.Timestamp(_cutoff)
             ].copy()
@@ -801,7 +813,7 @@ def compute_metrics(data):
                     "eligible": 0,
                     "pct": None,  # None = insufficient data
                 }
-                _pool = pd.DataFrame(columns=hire_df.columns)
+                _pool = hire_df.iloc[0:0].copy()  # preserve dtypes
                 continue
 
             _passed_mask = eligible["End Date"].isna() | (eligible["Days Employed"] >= days)

@@ -15,6 +15,7 @@ type PageState =
   | { phase: "loading" }
   | { phase: "already-taken" }
   | { phase: "error"; message: string }
+  | { phase: "slides"; test: KnowledgeTest; questions: KnowledgeQuestion[] }
   | { phase: "taking"; test: KnowledgeTest; questions: KnowledgeQuestion[] }
   | { phase: "done"; test: KnowledgeTest; questions: KnowledgeQuestion[]; result: GradeResult };
 
@@ -39,7 +40,11 @@ export function TakeTestPage() {
         if (!test) { setState({ phase: "error", message: "Test not found or inactive." }); return; }
         if (attempts.length > 0) { setState({ phase: "already-taken" }); return; }
         const questions = await getQuestions(testId);
-        setState({ phase: "taking", test, questions });
+        setState({
+          phase: test.slides.length > 0 ? "slides" : "taking",
+          test,
+          questions,
+        });
       } catch (e) {
         setState({ phase: "error", message: (e as Error).message });
       }
@@ -93,6 +98,19 @@ export function TakeTestPage() {
         </div>
         <BackLink />
       </Centered>
+    );
+  }
+
+  if (state.phase === "slides") {
+    return (
+      <SlideDeck
+        test={state.test}
+        onStartQuiz={() => {
+          setState({ phase: "taking", test: state.test, questions: state.questions });
+          window.scrollTo({ top: 0 });
+        }}
+        onCancel={() => navigate("/")}
+      />
     );
   }
 
@@ -245,6 +263,94 @@ function QuestionCard({
         })}
       </div>
     </div>
+  );
+}
+
+/* Training slides shown before the quiz — one KP-branded card per slide,
+ * chrome header band, crimson progress, Back/Next navigation. */
+function SlideDeck({
+  test,
+  onStartQuiz,
+  onCancel,
+}: {
+  test: KnowledgeTest;
+  onStartQuiz: () => void;
+  onCancel: () => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const slides = test.slides;
+  const slide = slides[index];
+  const last = index === slides.length - 1;
+
+  return (
+    <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      <div className="mb-6">
+        <h1 className="text-[26px] font-extrabold tracking-[-0.02em] text-kp-navy mb-1">
+          {test.name}
+        </h1>
+        <p className="text-[13.5px] text-kp-text-muted">
+          Review the material below — the quiz comes after the last slide.
+        </p>
+      </div>
+
+      <div className="bg-kp-surface rounded-xl border border-kp-border shadow-2xs overflow-hidden">
+        <div className="bg-kp-chrome border-l-4 border-kp-crimson px-5 py-3.5 flex items-center justify-between">
+          <span className="text-white text-[16px] font-bold">{slide.title}</span>
+          <span className="font-mono text-[11px] font-bold tracking-[0.08em] uppercase text-white/50">
+            Slide {index + 1} / {slides.length}
+          </span>
+        </div>
+        <ul className="px-6 py-6 space-y-3 min-h-[220px]">
+          {slide.bullets.map((b, i) => (
+            <li key={i} className="flex gap-3 text-[15px] text-kp-text leading-relaxed">
+              <span className="text-kp-crimson font-bold mt-0.5">•</span>
+              {b}
+            </li>
+          ))}
+        </ul>
+        <div className="h-1 bg-kp-surface-alt">
+          <div
+            className="h-full bg-kp-crimson transition-all"
+            style={{ width: `${((index + 1) / slides.length) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setIndex((i) => Math.max(0, i - 1))}
+          disabled={index === 0}
+          className="px-4 py-2.5 text-[13.5px] font-semibold text-kp-text border border-kp-border rounded-lg hover:bg-kp-surface transition-colors disabled:opacity-30"
+        >
+          ← Back
+        </button>
+        {last ? (
+          <button
+            type="button"
+            onClick={onStartQuiz}
+            className="px-5 py-2.5 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[14px] font-semibold rounded-lg transition-colors"
+          >
+            Start Quiz ({test.questionCount} questions)
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIndex((i) => Math.min(slides.length - 1, i + 1))}
+            className="px-5 py-2.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[14px] font-semibold rounded-lg transition-colors"
+          >
+            Next →
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onCancel}
+          className="ml-auto px-4 py-2.5 text-[13.5px] font-semibold text-kp-text-muted hover:text-kp-navy border border-kp-border rounded-lg hover:bg-kp-surface transition-colors"
+        >
+          Exit
+        </button>
+      </div>
+    </main>
   );
 }
 

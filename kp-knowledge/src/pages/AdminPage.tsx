@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import { canManageTests, canViewAllResults } from "../types/roles";
 import type { KnowledgeAttempt, KnowledgeQuestion, KnowledgeTest } from "../types/knowledge";
@@ -15,10 +15,11 @@ import {
   updateTest,
 } from "../lib/knowledge";
 import { parseTestExcel } from "../lib/parseTestExcel";
+import { generateTestFromDoc } from "../lib/aiGenerate";
 import { seedForkliftTest } from "../lib/seed";
 import { Pill } from "./TestsPage";
 
-type Tab = "tests" | "upload" | "results";
+type Tab = "tests" | "ai" | "upload" | "results";
 
 export function AdminPage() {
   const authed = useOutletContext<AuthState>();
@@ -37,6 +38,7 @@ export function AdminPage() {
 
   const tabs: Array<{ key: Tab; label: string; show: boolean }> = [
     { key: "tests", label: "Tests", show: manage },
+    { key: "ai", label: "✨ Create with AI", show: manage },
     { key: "upload", label: "Upload Test", show: manage },
     { key: "results", label: "Results", show: viewResults },
   ];
@@ -72,6 +74,7 @@ export function AdminPage() {
       </div>
 
       {activeTab === "tests" && <TestsAdmin authed={authed} />}
+      {activeTab === "ai" && <AiCreateAdmin />}
       {activeTab === "upload" && <UploadAdmin authed={authed} />}
       {activeTab === "results" && <ResultsAdmin />}
     </main>
@@ -151,9 +154,18 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[15px] font-bold text-kp-text">{test.name}</span>
-                  <Pill tone={test.isActive ? "good" : "neutral"}>
-                    {test.isActive ? "Active" : "Inactive"}
-                  </Pill>
+                  {test.status === "draft" ? (
+                    <Pill tone="warn">Draft</Pill>
+                  ) : (
+                    <Pill tone={test.isActive ? "good" : "neutral"}>
+                      {test.isActive ? "Active" : "Inactive"}
+                    </Pill>
+                  )}
+                  {test.aiGenerated && (
+                    <span className="font-mono text-[10px] font-extrabold tracking-[0.04em] bg-kp-violet text-white px-1.5 py-0.5 rounded-[5px]">
+                      AI
+                    </span>
+                  )}
                   {test.tags.map((tag) => (
                     <span key={tag} className="font-mono text-[11px] bg-kp-surface-alt border border-kp-border rounded-[6px] px-1.5 py-0.5 text-kp-text-muted">
                       {tag}
@@ -165,6 +177,12 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
                 </div>
               </div>
               <div className="flex gap-2">
+                <Link
+                  to={`/admin/tests/${test.id}`}
+                  className="px-2.5 py-1.5 text-[12.5px] font-semibold border rounded-lg transition-colors text-kp-text-muted border-kp-border hover:bg-kp-surface-alt hover:text-kp-navy"
+                >
+                  {test.status === "draft" ? "Review & Edit" : "Edit"}
+                </Link>
                 <SmallButton onClick={() => setExpanded(expanded === test.id ? null : test.id)}>
                   {expanded === test.id ? "Close" : "Questions"}
                 </SmallButton>
@@ -315,6 +333,104 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
         className="focus-kp mt-1 w-full bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13.5px]"
       />
     </label>
+  );
+}
+
+/* ── AI Create tab ───────────────────────────────────────────────── */
+
+function AiCreateAdmin() {
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<
+    | { kind: "idle" }
+    | { kind: "working"; filename: string }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" });
+
+  async function handleFile(file: File) {
+    if (!file.name.toLowerCase().endsWith(".docx")) {
+      setStatus({ kind: "error", message: "Please choose a Word document (.docx)." });
+      return;
+    }
+    setStatus({ kind: "working", filename: file.name });
+    try {
+      const result = await generateTestFromDoc(file);
+      navigate(`/admin/tests/${result.testId}`);
+    } catch (e) {
+      setStatus({ kind: "error", message: (e as Error).message });
+    }
+  }
+
+  const working = status.kind === "working";
+
+  return (
+    <section className="max-w-2xl">
+      <h2 className="kp-kicker mb-4">Create a Test with AI</h2>
+      <p className="text-[13.5px] text-kp-text-muted mb-5">
+        Upload a Word document — a policy, procedure, or training doc — and the AI
+        builds a slide deck teaching its content plus a quiz. Nothing goes live:
+        the result lands as a <strong className="text-kp-text">draft</strong> for
+        you to review, edit, and publish.
+      </p>
+
+      <label
+        className={`flex flex-col items-center justify-center gap-2 p-10 bg-kp-surface border-2 border-dashed rounded-xl transition-colors ${
+          working
+            ? "border-kp-border-soft opacity-60 cursor-wait"
+            : "border-kp-border cursor-pointer hover:border-kp-border-strong"
+        }`}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (working) return;
+          const f = e.dataTransfer.files[0];
+          if (f) handleFile(f);
+        }}
+      >
+        <div className="text-[26px]">✨</div>
+        <div className="text-[14px] font-semibold text-kp-text">
+          {working ? "Generating…" : "Drop a .docx here, or click to choose"}
+        </div>
+        <div className="text-[12.5px] text-kp-text-faint">
+          {working
+            ? "Reading the document and writing slides + quiz — this can take a minute or two"
+            : "Word documents only for now"}
+        </div>
+        <input
+          type="file"
+          accept=".docx"
+          className="hidden"
+          disabled={working}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+            e.target.value = "";
+          }}
+        />
+      </label>
+
+      {working && (
+        <div className="mt-4 flex items-center gap-3 text-[13.5px] text-kp-text-muted">
+          <span className="inline-block w-4 h-4 border-2 border-kp-crimson border-t-transparent rounded-full animate-spin" />
+          Analyzing <strong className="text-kp-text">{status.filename}</strong> — you'll land on
+          the draft editor when it's ready.
+        </div>
+      )}
+      {status.kind === "error" && (
+        <div className="mt-4 text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-3">
+          {status.message}
+        </div>
+      )}
+
+      <div className="mt-8 bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
+        <h3 className="kp-kicker mb-3">How it works</h3>
+        <ol className="text-[13px] text-kp-text-muted space-y-1.5 list-decimal pl-4">
+          <li>The document's text is extracted and sent to Claude.</li>
+          <li>Claude writes training slides covering the content, then a 10–15 question quiz on those slides.</li>
+          <li>You review the draft — edit any slide, question, or setting, in full.</li>
+          <li>Approve &amp; Publish makes it visible to staff, who view the slides and then take the quiz.</li>
+        </ol>
+      </div>
+    </section>
   );
 }
 

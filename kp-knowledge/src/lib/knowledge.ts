@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -30,11 +31,20 @@ function testFromDoc(id: string, data: Record<string, unknown>): KnowledgeTest {
     description: (data.description as string) ?? "",
     maxWrongToPass: (data.maxWrongToPass as number) ?? 0,
     isActive: (data.isActive as boolean) ?? false,
+    status: (data.status as KnowledgeTest["status"]) ?? "published",
+    aiGenerated: (data.aiGenerated as boolean) ?? false,
+    sourceDocName: (data.sourceDocName as string) ?? null,
+    slides: (data.slides as KnowledgeTest["slides"]) ?? [],
     tags: (data.tags as string[]) ?? [],
     questionCount: (data.questionCount as number) ?? 0,
     createdBy: (data.createdBy as string) ?? "",
     createdAt: (data.createdAt as KnowledgeTest["createdAt"]) ?? null,
   };
+}
+
+export async function getTest(testId: string): Promise<KnowledgeTest | null> {
+  const snap = await getDoc(doc(db, TESTS, testId));
+  return snap.exists() ? testFromDoc(snap.id, snap.data()) : null;
 }
 
 export async function listTests(opts: { activeOnly: boolean }): Promise<KnowledgeTest[]> {
@@ -163,9 +173,23 @@ export async function createTest(args: {
 
 export async function updateTest(
   testId: string,
-  fields: Partial<Pick<KnowledgeTest, "name" | "description" | "maxWrongToPass" | "isActive" | "tags">>
+  fields: Partial<
+    Pick<
+      KnowledgeTest,
+      "name" | "description" | "maxWrongToPass" | "isActive" | "tags" | "slides" | "status"
+    >
+  >
 ): Promise<void> {
   await updateDoc(doc(db, TESTS, testId), fields);
+}
+
+export async function addQuestion(testId: string, q: NewQuestion): Promise<void> {
+  const existing = await getQuestions(testId);
+  await addDoc(collection(db, TESTS, testId, "questions"), {
+    ...q,
+    orderNum: (existing[existing.length - 1]?.orderNum ?? 0) + 1,
+  });
+  await updateDoc(doc(db, TESTS, testId), { questionCount: existing.length + 1 });
 }
 
 export async function updateQuestion(

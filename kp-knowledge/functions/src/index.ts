@@ -1,0 +1,1 @@
+export { generateKnowledgeTest } from "./generateKnowledgeTest";

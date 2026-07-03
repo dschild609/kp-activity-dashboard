@@ -3,6 +3,11 @@ import type { Timestamp } from "firebase/firestore";
 export type QuestionType = "MC" | "TF";
 export type AnswerKey = "A" | "B" | "C" | "D";
 
+export interface KnowledgeSlide {
+  title: string;
+  bullets: string[];
+}
+
 export interface KnowledgeTest {
   id: string;
   name: string;
@@ -11,6 +16,13 @@ export interface KnowledgeTest {
    * wrongCount <= maxWrongToPass (e.g. 15 questions, 3 wrong allowed = 80%) */
   maxWrongToPass: number;
   isActive: boolean;
+  /* AI-generated tests start as "draft" (isActive false) until an admin
+   * reviews and publishes; hand-made tests are "published" from creation */
+  status: "draft" | "published";
+  aiGenerated: boolean;
+  sourceDocName: string | null;
+  /* Training slides shown before the quiz (AI flow); empty = quiz only */
+  slides: KnowledgeSlide[];
   tags: string[];
   questionCount: number;
   createdBy: string;

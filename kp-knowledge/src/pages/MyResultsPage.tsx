@@ -3,7 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgeAttempt } from "../types/knowledge";
 import { listAttempts } from "../lib/knowledge";
-import { Pill } from "./TestsPage";
+import { Pill, Th } from "../components/ui";
 
 export function MyResultsPage() {
   const { user } = useOutletContext<AuthState>();
@@ -82,14 +82,3 @@ export function MyResultsPage() {
   );
 }
 
-function Th({ children, align }: { children: React.ReactNode; align?: "right" }) {
-  return (
-    <th
-      className={`px-4 py-2.5 font-mono text-[11.5px] font-bold tracking-[0.08em] uppercase text-kp-text-muted ${
-        align === "right" ? "text-right" : "text-left"
-      }`}
-    >
-      {children}
-    </th>
-  );
-}

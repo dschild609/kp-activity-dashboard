@@ -131,7 +131,7 @@ export function SnipModal({
                   top: rect.y,
                   width: rect.w,
                   height: rect.h,
-                  borderColor: "#94002a",
+                  borderColor: "var(--color-kp-crimson)",
                   boxShadow: "0 0 0 9999px rgba(0,0,0,.45)",
                 }}
               />

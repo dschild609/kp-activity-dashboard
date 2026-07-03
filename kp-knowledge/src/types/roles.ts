@@ -9,13 +9,6 @@ export const HUB_ROLES = [
 export type HubRole = (typeof HUB_ROLES)[number];
 export type UserRole = HubRole | "pending" | null;
 
-export const BRANCHES = [
-  "ARL", "ATL", "CARR", "DENT", "DUNC", "FORT", "GARL",
-  "GRAN", "HNC", "HOU", "IRV", "KC", "MEM", "NHOU", "PAS", "PHX", "SAG",
-] as const;
-
-export type BranchCode = (typeof BRANCHES)[number];
-
 export function isAuthorizedRole(role: UserRole): boolean {
   return role !== null && role !== "pending";
 }

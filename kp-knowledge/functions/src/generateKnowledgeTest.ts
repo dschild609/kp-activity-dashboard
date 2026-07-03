@@ -1,33 +1,27 @@
 // AI test generation for KP Knowledge — an admin uploads a Word doc (the
 // content source) plus optional "exhibit" files (e.g. a blank W-4 rendered
 // to page images client-side). Claude turns the doc into training slides +
-// a quiz, choosing which exhibit page to screenshot onto each slide. We
-// store the page images in Firebase Storage and save the result as a DRAFT
-// test (isActive: false) for the admin to review, edit, and publish.
-//
-// Auth: Firebase ID token + admin-tier role check (Cloud Functions run with
-// Admin SDK privileges, so this check is the enforcement layer).
+// a quiz, choosing which exhibit page (and which region of it) each
+// screenshot slide shows. We store the images in Firebase Storage and save
+// the result as a DRAFT test (isActive: false) for review and publishing.
 
-import { onRequest } from "firebase-functions/v2/https";
-import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
-import Anthropic from "@anthropic-ai/sdk";
 import * as mammoth from "mammoth";
 import sharp from "sharp";
-import { ALLOWED_ORIGINS, uploadJpeg, verifyManager } from "./shared";
-
-if (admin.apps.length === 0) {
-  admin.initializeApp();
-}
-
-const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
-
-// Opus — content generation quality matters here (training material +
-// fair, well-constructed quiz questions), and volume is a few runs a week.
-const GENERATION_MODEL = "claude-opus-4-8";
+import {
+  ANTHROPIC_API_KEY,
+  COLUMNS_ITEMS_SCHEMA,
+  ClaudeRefusalError,
+  MAX_PAGES,
+  QUESTION_PROPS,
+  STEPS_ITEMS_SCHEMA,
+  claudeJson,
+  managerEndpoint,
+  uploadJpeg,
+  type GeneratedQuestion,
+} from "./shared";
 
 const MAX_EXHIBITS = 5;
-const MAX_EXHIBIT_PAGES = 20; // across all exhibits
 
 // Exhibits arrive pre-rendered from the client: each page as a base64 JPEG
 // (the browser rasterizes PDFs with pdf.js; plain images come as one page).
@@ -58,7 +52,7 @@ const TEST_SCHEMA = {
         properties: {
           kind: {
             type: "string",
-            enum: ["title", "section", "agenda", "bullets", "steps", "image", "imageWide"],
+            enum: ["title", "section", "agenda", "bullets", "steps", "image"],
             description: "Which template layout this slide uses",
           },
           kicker: {
@@ -78,33 +72,12 @@ const TEST_SCHEMA = {
           columns: {
             type: ["array", "null"],
             description: "1-2 columns of headed bullet lists — bullets slides only, null otherwise",
-            items: {
-              type: "object" as const,
-              properties: {
-                heading: { type: "string", description: "Column card heading" },
-                bullets: {
-                  type: "array",
-                  items: { type: "string" },
-                  description:
-                    "3-6 concise bullets; use 'Lead — description' to bold a lead-in term",
-                },
-              },
-              required: ["heading", "bullets"],
-              additionalProperties: false,
-            },
+            items: COLUMNS_ITEMS_SCHEMA,
           },
           steps: {
             type: ["array", "null"],
             description: "2-4 sequential process steps — steps slides only, null otherwise",
-            items: {
-              type: "object" as const,
-              properties: {
-                title: { type: "string" },
-                description: { type: "string", description: "One or two short sentences" },
-              },
-              required: ["title", "description"],
-              additionalProperties: false,
-            },
+            items: STEPS_ITEMS_SCHEMA,
           },
           body: {
             type: ["string", "null"],
@@ -113,6 +86,12 @@ const TEST_SCHEMA = {
           note: {
             type: ["string", "null"],
             description: "Optional callout note under the body — image slides only",
+          },
+          imagePosition: {
+            type: ["string", "null"],
+            enum: ["left", "top", null],
+            description:
+              "Image slides only: 'left' = image fills the left half (page-shaped images); 'top' = image spans the top with text below (wide, short crops like a form row). null on non-image slides.",
           },
           image: {
             type: ["object", "null"],
@@ -140,7 +119,8 @@ const TEST_SCHEMA = {
           },
         },
         required: [
-          "kind", "kicker", "title", "subtitle", "items", "columns", "steps", "body", "note", "image",
+          "kind", "kicker", "title", "subtitle", "items", "columns", "steps",
+          "body", "note", "imagePosition", "image",
         ],
         additionalProperties: false,
       },
@@ -150,15 +130,7 @@ const TEST_SCHEMA = {
       description: "Quiz questions testing the slide content",
       items: {
         type: "object" as const,
-        properties: {
-          text: { type: "string" },
-          type: { type: "string", enum: ["MC", "TF"] },
-          optionA: { type: "string" },
-          optionB: { type: "string" },
-          optionC: { type: ["string", "null"], description: "null for TF questions" },
-          optionD: { type: ["string", "null"], description: "null for TF questions" },
-          correctAnswer: { type: "string", enum: ["A", "B", "C", "D"] },
-        },
+        properties: QUESTION_PROPS,
         required: ["text", "type", "optionA", "optionB", "optionC", "optionD", "correctAnswer"],
         additionalProperties: false,
       },
@@ -179,8 +151,7 @@ CHOOSING LAYOUTS: you decide the layout for every slide, and the decision should
 - "section": a divider that opens each major section of a longer deck. kicker = "SECTION ONE", "SECTION TWO", ... in sequence; title = the section name; subtitle = one sentence on what the section covers. Use sections only when the material has 2+ genuinely distinct parts; skip them for short single-topic decks.
 - "bullets": the workhorse content slide. columns = 1 column normally; 2 columns when the content pairs naturally (do/don't, what you'll do/who to ask, requirements/exceptions). Each column has a heading and 3-6 bullets. Write bullets as "Lead — description" when there's a natural lead-in term (it renders bold). No column heading repetition of the slide title.
 - "steps": a numbered process with 2-4 sequential steps (apply → orientation → assignment → check-in). Each step: short title + one-two sentence description. Use for any procedure with a clear order.
-- "image": a screenshot slide — the exhibit image fills the left half; kicker/title on the right with a short body paragraph explaining what the viewer is looking at, and optionally a note (a short callout, e.g. a common mistake or where to sign). Use when the image is roughly page-shaped (taller than wide, or square).
-- "imageWide": the horizontal screenshot slide — the image spans the top ~60% of the slide with the title/body/note in a band below. Use when the image (usually a crop) is WIDE and SHORT — a single form row, a signature line, a table header. A wide crop on a side-by-side "image" slide wastes most of the pane; put it on "imageWide" instead. Only "image" and "imageWide" slides carry an "image" reference.
+- "image": a screenshot slide. Set imagePosition per the image's shape: "left" (side-by-side — the image fills the left half, kicker/title/body on the right) when the image is roughly page-shaped (taller than wide, or square); "top" (horizontal — the image spans the top ~60% with the text in a band below) when the image is WIDE and SHORT — a single form row, a signature line, a table header. A wide crop on a side-by-side slide wastes most of the pane. Include a short body paragraph explaining what the viewer is looking at, and optionally a note (a short callout, e.g. a common mistake or where to sign). Only image slides carry an "image" reference and an imagePosition.
 
 Layout discipline: every slide sets exactly the fields its kind needs and null for the rest. Don't pad the deck — no "questions?" slide, no closing slide, no bullet that restates the slide title.
 
@@ -201,26 +172,27 @@ type ContentBlock =
       source: { type: "base64"; media_type: "image/jpeg"; data: string };
     };
 
-export const generateKnowledgeTest = onRequest(
-  {
-    cors: ALLOWED_ORIGINS,
-    secrets: [ANTHROPIC_API_KEY],
-    timeoutSeconds: 540,
-    memory: "1GiB",
-    region: "us-central1",
-  },
-  async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ ok: false, error: "POST only" });
-      return;
-    }
+interface GeneratedSlide {
+  kind: "title" | "section" | "agenda" | "bullets" | "steps" | "image";
+  kicker: string | null;
+  title: string;
+  subtitle: string | null;
+  items: string[] | null;
+  columns: Array<{ heading: string; bullets: string[] }> | null;
+  steps: Array<{ title: string; description: string }> | null;
+  body: string | null;
+  note: string | null;
+  imagePosition: "left" | "top" | null;
+  image: {
+    exhibit: number;
+    page: number;
+    region: { x: number; y: number; width: number; height: number } | null;
+  } | null;
+}
 
-    const auth = await verifyManager(req.headers.authorization);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-
+export const generateKnowledgeTest = managerEndpoint(
+  { secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 540, memory: "1GiB" },
+  async (req, res, auth) => {
     const { filename, data, exhibits } = req.body ?? {};
     if (typeof data !== "string" || !data) {
       res.status(400).json({ ok: false, error: "Missing base64 'data' field" });
@@ -238,8 +210,8 @@ export const generateKnowledgeTest = onRequest(
       return;
     }
     const totalPages = exhibitList.reduce((n, e) => n + (e.pages?.length ?? 0), 0);
-    if (totalPages > MAX_EXHIBIT_PAGES) {
-      res.status(400).json({ ok: false, error: `Too many exhibit pages (max ${MAX_EXHIBIT_PAGES} total)` });
+    if (totalPages > MAX_PAGES) {
+      res.status(400).json({ ok: false, error: `Too many exhibit pages (max ${MAX_PAGES} total)` });
       return;
     }
     for (const e of exhibitList) {
@@ -270,30 +242,34 @@ export const generateKnowledgeTest = onRequest(
     // Guard the context window — plenty for any realistic training doc
     if (text.length > 400_000) text = text.slice(0, 400_000);
 
-    // Upload exhibit page images to Storage up front so slide images have
-    // stable URLs regardless of what the model picks. Token-style download
-    // URLs (unguessable UUID) — same mechanism the Firebase client SDK uses.
+    // Upload exhibit page images to Storage up front (concurrently) so slide
+    // images have stable URLs regardless of what the model picks.
     const db = admin.firestore();
     const testRef = db.collection("knowledgeTests").doc();
     const assets: Array<{ name: string; page: number; url: string }> = [];
-
     // pages[exhibitIdx][pageIdx] -> {url, buffer, width, height}
-    const pages: Array<Array<{ url: string; buffer: Buffer; width: number; height: number }>> = [];
+    let pages: Array<Array<{ url: string; buffer: Buffer; width: number; height: number }>>;
     try {
-      for (let ei = 0; ei < exhibitList.length; ei++) {
-        pages.push([]);
-        for (let pi = 0; pi < exhibitList[ei].pages.length; pi++) {
-          const page = exhibitList[ei].pages[pi];
-          const buffer = Buffer.from(page.imageBase64, "base64");
-          const meta = await sharp(buffer).metadata();
-          const url = await uploadJpeg(
-            `knowledgeAssets/${testRef.id}/exhibit-${ei + 1}-page-${page.pageNumber}.jpg`,
-            buffer
-          );
-          pages[ei].push({ url, buffer, width: meta.width ?? 0, height: meta.height ?? 0 });
-          assets.push({ name: exhibitList[ei].name, page: page.pageNumber, url });
-        }
-      }
+      pages = await Promise.all(
+        exhibitList.map((exhibit, ei) =>
+          Promise.all(
+            exhibit.pages.map(async (page) => {
+              const buffer = Buffer.from(page.imageBase64, "base64");
+              const meta = await sharp(buffer).metadata();
+              const url = await uploadJpeg(
+                `knowledgeAssets/${testRef.id}/exhibit-${ei + 1}-page-${page.pageNumber}.jpg`,
+                buffer
+              );
+              return { url, buffer, width: meta.width ?? 0, height: meta.height ?? 0 };
+            })
+          )
+        )
+      );
+      exhibitList.forEach((exhibit, ei) => {
+        exhibit.pages.forEach((page, pi) => {
+          assets.push({ name: exhibit.name, page: page.pageNumber, url: pages[ei][pi].url });
+        });
+      });
     } catch (e) {
       console.error("exhibit upload failed", e);
       res.status(502).json({ ok: false, error: `Couldn't store exhibit images: ${(e as Error).message}` });
@@ -332,56 +308,20 @@ export const generateKnowledgeTest = onRequest(
     });
 
     // Generate slides + quiz with Claude
-    const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
-    interface GeneratedSlide {
-      kind: "title" | "section" | "agenda" | "bullets" | "steps" | "image" | "imageWide";
-      kicker: string | null;
-      title: string;
-      subtitle: string | null;
-      items: string[] | null;
-      columns: Array<{ heading: string; bullets: string[] }> | null;
-      steps: Array<{ title: string; description: string }> | null;
-      body: string | null;
-      note: string | null;
-      image: {
-        exhibit: number;
-        page: number;
-        region: { x: number; y: number; width: number; height: number } | null;
-      } | null;
-    }
     let generated: {
       name: string;
       description: string;
       maxWrongToPass: number;
       slides: GeneratedSlide[];
-      questions: Array<{
-        text: string;
-        type: "MC" | "TF";
-        optionA: string;
-        optionB: string;
-        optionC: string | null;
-        optionD: string | null;
-        correctAnswer: "A" | "B" | "C" | "D";
-      }>;
+      questions: GeneratedQuestion[];
     };
     try {
-      const stream = anthropic.messages.stream({
-        model: GENERATION_MODEL,
-        max_tokens: 32000,
-        thinking: { type: "adaptive" },
-        system: SYSTEM_PROMPT,
-        output_config: { format: { type: "json_schema", schema: TEST_SCHEMA } },
-        messages: [{ role: "user", content }],
-      });
-      const message = await stream.finalMessage();
-      if (message.stop_reason === "refusal") {
+      generated = await claudeJson({ system: SYSTEM_PROMPT, content, schema: TEST_SCHEMA });
+    } catch (e) {
+      if (e instanceof ClaudeRefusalError) {
         res.status(422).json({ ok: false, error: "The model declined to process this document" });
         return;
       }
-      const jsonText = message.content.find((b) => b.type === "text");
-      if (!jsonText || jsonText.type !== "text") throw new Error("No text block in response");
-      generated = JSON.parse(jsonText.text);
-    } catch (e) {
       console.error("generation failed", e);
       res.status(502).json({ ok: false, error: `Generation failed: ${(e as Error).message}` });
       return;
@@ -393,62 +333,61 @@ export const generateKnowledgeTest = onRequest(
     }
 
     // Resolve slide image references to stored URLs. When the model chose a
-    // crop region, cut it out of the page (clamped to bounds) and store the
-    // detail as its own asset — the slide shows exactly the relevant part.
-    let cropCount = 0;
-    const slides = [];
-    for (const s of generated.slides) {
-      let imageUrl: string | null = null;
-      let imageLabel: string | null = null;
-      const pageInfo = s.image ? pages[s.image.exhibit - 1]?.[s.image.page - 1] : undefined;
-      if (s.image && pageInfo) {
-        const ex = exhibitList[s.image.exhibit - 1];
-        imageUrl = pageInfo.url;
-        imageLabel = `${ex.name} — page ${s.image.page}`;
-        const r = s.image.region;
-        if (r && pageInfo.width > 0 && pageInfo.height > 0) {
-          // Clamp to page bounds; ignore degenerate or near-full-page crops
-          const x = Math.max(0, Math.min(r.x, pageInfo.width - 1));
-          const y = Math.max(0, Math.min(r.y, pageInfo.height - 1));
-          const w = Math.max(1, Math.min(r.width, pageInfo.width - x));
-          const h = Math.max(1, Math.min(r.height, pageInfo.height - y));
-          const nearFull = w * h > 0.9 * pageInfo.width * pageInfo.height;
-          if (!nearFull && w >= 60 && h >= 40) {
-            try {
-              cropCount += 1;
-              const cropBuffer = await sharp(pageInfo.buffer)
-                .extract({ left: x, top: y, width: w, height: h })
-                .jpeg({ quality: 88 })
-                .toBuffer();
-              const cropUrl = await uploadJpeg(
-                `knowledgeAssets/${testRef.id}/crop-${cropCount}-ex${s.image.exhibit}-p${s.image.page}.jpg`,
-                cropBuffer
-              );
-              imageUrl = cropUrl;
-              imageLabel = `${ex.name} — page ${s.image.page} (detail)`;
-              assets.push({ name: `${ex.name} (detail ${cropCount})`, page: s.image.page, url: cropUrl });
-            } catch (e) {
-              // Fall back to the full page rather than failing the run
-              console.error("crop failed, using full page", e);
+    // crop region, cut it out of the page (clamped to bounds, concurrently)
+    // and store the detail as its own asset.
+    const slides = await Promise.all(
+      generated.slides.map(async (s, si) => {
+        let imageUrl: string | null = null;
+        let imageLabel: string | null = null;
+        const pageInfo = s.image ? pages[s.image.exhibit - 1]?.[s.image.page - 1] : undefined;
+        if (s.image && pageInfo) {
+          const ex = exhibitList[s.image.exhibit - 1];
+          imageUrl = pageInfo.url;
+          imageLabel = `${ex.name} — page ${s.image.page}`;
+          const r = s.image.region;
+          if (r && pageInfo.width > 0 && pageInfo.height > 0) {
+            // Clamp to page bounds; ignore degenerate or near-full-page crops
+            const x = Math.max(0, Math.min(r.x, pageInfo.width - 1));
+            const y = Math.max(0, Math.min(r.y, pageInfo.height - 1));
+            const w = Math.max(1, Math.min(r.width, pageInfo.width - x));
+            const h = Math.max(1, Math.min(r.height, pageInfo.height - y));
+            const nearFull = w * h > 0.9 * pageInfo.width * pageInfo.height;
+            if (!nearFull && w >= 60 && h >= 40) {
+              try {
+                const cropBuffer = await sharp(pageInfo.buffer)
+                  .extract({ left: x, top: y, width: w, height: h })
+                  .jpeg({ quality: 88 })
+                  .toBuffer();
+                const cropUrl = await uploadJpeg(
+                  `knowledgeAssets/${testRef.id}/crop-s${si + 1}-ex${s.image.exhibit}-p${s.image.page}.jpg`,
+                  cropBuffer
+                );
+                imageUrl = cropUrl;
+                imageLabel = `${ex.name} — page ${s.image.page} (detail)`;
+                assets.push({ name: `${ex.name} (detail, slide ${si + 1})`, page: s.image.page, url: cropUrl });
+              } catch (e) {
+                // Fall back to the full page rather than failing the run
+                console.error("crop failed, using full page", e);
+              }
             }
           }
         }
-      }
-      slides.push({
-        kind: s.kind === "imageWide" ? "image" : s.kind,
-        imagePosition: s.kind === "imageWide" ? "top" : "left",
-        kicker: s.kicker ?? null,
-        title: s.title,
-        subtitle: s.subtitle ?? null,
-        items: s.items ?? null,
-        columns: s.columns ?? null,
-        steps: s.steps ?? null,
-        body: s.body ?? null,
-        note: s.note ?? null,
-        imageUrl,
-        imageLabel,
-      });
-    }
+        return {
+          kind: s.kind,
+          imagePosition: s.imagePosition ?? "left",
+          kicker: s.kicker ?? null,
+          title: s.title,
+          subtitle: s.subtitle ?? null,
+          items: s.items ?? null,
+          columns: s.columns ?? null,
+          steps: s.steps ?? null,
+          body: s.body ?? null,
+          note: s.note ?? null,
+          imageUrl,
+          imageLabel,
+        };
+      })
+    );
 
     // Save as a DRAFT test (invisible to employees until published)
     const batch = db.batch();

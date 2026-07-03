@@ -9,7 +9,6 @@ import {
   getTest,
   gradeAnswers,
   listAttempts,
-  listTests,
   submitAttempt,
   type GradeResult,
 } from "../lib/knowledge";
@@ -90,12 +89,14 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
           return;
         }
 
-        const [tests, attempts] = await Promise.all([
-          listTests({ activeOnly: true }),
+        const [test, attempts] = await Promise.all([
+          getTest(testId),
           listAttempts({ uid: user.uid, testId }),
         ]);
-        const test = tests.find((t) => t.id === testId);
-        if (!test) { setState({ phase: "error", message: "Test not found or inactive." }); return; }
+        if (!test || !test.isActive) {
+          setState({ phase: "error", message: "Test not found or inactive." });
+          return;
+        }
         const gate = attemptGate(test, attempts);
         if (!gate.canTake) {
           setState({ phase: "blocked", reason: gate.reason!, test });
@@ -369,7 +370,7 @@ function QuestionCard({
                 checked={given === opt.key}
                 onChange={() => onAnswer(opt.key)}
                 disabled={!!graded}
-                className="accent-[#94002a]"
+                className="accent-[var(--color-kp-crimson)]"
               />
               <span className="font-mono text-[11px] font-bold text-kp-text-faint">
                 {opt.displayLetter}

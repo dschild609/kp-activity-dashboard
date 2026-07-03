@@ -5,6 +5,8 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
+  limit,
   orderBy,
   query,
   serverTimestamp,
@@ -217,12 +219,14 @@ export function attemptGate(
 }
 
 export async function addQuestion(testId: string, q: NewQuestion): Promise<void> {
-  const existing = await getQuestions(testId);
+  const last = await getDocs(
+    query(collection(db, TESTS, testId, "questions"), orderBy("orderNum", "desc"), limit(1))
+  );
   await addDoc(collection(db, TESTS, testId, "questions"), {
     ...q,
-    orderNum: (existing[existing.length - 1]?.orderNum ?? 0) + 1,
+    orderNum: ((last.docs[0]?.data().orderNum as number) ?? 0) + 1,
   });
-  await updateDoc(doc(db, TESTS, testId), { questionCount: existing.length + 1 });
+  await updateDoc(doc(db, TESTS, testId), { questionCount: increment(1) });
 }
 
 export async function updateQuestion(
@@ -235,8 +239,7 @@ export async function updateQuestion(
 
 export async function deleteQuestion(testId: string, questionId: string): Promise<void> {
   await deleteDoc(doc(db, TESTS, testId, "questions", questionId));
-  const remaining = await getQuestions(testId);
-  await updateDoc(doc(db, TESTS, testId), { questionCount: remaining.length });
+  await updateDoc(doc(db, TESTS, testId), { questionCount: increment(-1) });
 }
 
 export async function deleteTest(testId: string): Promise<void> {

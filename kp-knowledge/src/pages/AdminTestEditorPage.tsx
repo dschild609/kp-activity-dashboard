@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import { canManageTests } from "../types/roles";
-import type {
-  AnswerKey,
-  KnowledgeAsset,
-  KnowledgeAttempt,
-  KnowledgeQuestion,
-  KnowledgeSlide,
-  KnowledgeTest,
-  RetakePolicy,
-  SlideKind,
+import {
+  makeSlide,
+  type AnswerKey,
+  type KnowledgeAsset,
+  type KnowledgeAttempt,
+  type KnowledgeQuestion,
+  type KnowledgeSlide,
+  type KnowledgeTest,
+  type RetakePolicy,
+  type SlideKind,
 } from "../types/knowledge";
-import { SlideView, sectionNumberAt } from "../components/SlideView";
+import { SlideView, move, sectionNumberAt } from "../components/SlideView";
 import { SnipModal } from "../components/SnipModal";
+import { Field, NoticeBox, Pill, SmallButton } from "../components/ui";
 import {
   addQuestion,
   deleteQuestion,
@@ -68,18 +70,18 @@ export function AdminTestEditorPage() {
     return map;
   }, [attempts]);
 
+  useEffect(() => {
+    if (!testId) return;
+    listAttempts({ testId }).then(setAttempts).catch(() => {});
+  }, [testId]);
+
   const reload = useCallback(async () => {
     if (!testId) return;
     try {
-      const [t, qs, atts] = await Promise.all([
-        getTest(testId),
-        getQuestions(testId),
-        listAttempts({ testId }),
-      ]);
+      const [t, qs] = await Promise.all([getTest(testId), getQuestions(testId)]);
       if (!t) { setError("Test not found."); return; }
       setTest(t);
       setQuestions(qs);
-      setAttempts(atts);
       setName(t.name);
       setDescription(t.description);
       setMaxWrong(t.maxWrongToPass);
@@ -118,6 +120,10 @@ export function AdminTestEditorPage() {
 
   const markDirty = () => setDirty(true);
 
+  async function refreshQuestions() {
+    if (testId) setQuestions(await getQuestions(testId));
+  }
+
   const metaFields = () => ({
     name,
     description,
@@ -141,10 +147,11 @@ export function AdminTestEditorPage() {
   async function publish(next: boolean) {
     setSaving("publish");
     try {
-      if (dirty) {
-        await updateTest(testId!, metaFields());
-      }
-      await updateTest(testId!, { isActive: next, status: next ? "published" : "draft" });
+      await updateTest(testId!, {
+        ...metaFields(),
+        isActive: next,
+        status: next ? "published" : "draft",
+      });
       await reload();
     } finally {
       setSaving(null);
@@ -158,13 +165,9 @@ export function AdminTestEditorPage() {
           ← Admin
         </Link>
         {test.status === "draft" ? (
-          <span className="px-2 py-0.5 text-[12.5px] font-bold rounded-[6px] border text-kp-warn bg-kp-warn-bg border-kp-warn-border">
-            Draft — not visible to staff
-          </span>
+          <Pill tone="warn">Draft — not visible to staff</Pill>
         ) : (
-          <span className="px-2 py-0.5 text-[12.5px] font-bold rounded-[6px] border text-kp-good bg-kp-good-bg border-kp-good-border">
-            Published
-          </span>
+          <Pill tone="good">Published</Pill>
         )}
         {test.aiGenerated && (
           <span className="font-mono text-[11px] font-extrabold tracking-[0.04em] bg-kp-violet text-white px-2 py-0.5 rounded-[5px]">
@@ -274,7 +277,7 @@ export function AdminTestEditorPage() {
                 optionD: null,
                 correctAnswer: "A",
               });
-              await reload();
+              await refreshQuestions();
             }}
           >
             + Add question
@@ -289,12 +292,12 @@ export function AdminTestEditorPage() {
               stats={questionStats.get(q.id)}
               onSave={async (fields) => {
                 await updateQuestion(testId, q.id, fields);
-                await reload();
+                await refreshQuestions();
               }}
               onDelete={async () => {
                 if (!window.confirm("Delete this question?")) return;
                 await deleteQuestion(testId, q.id);
-                await reload();
+                await refreshQuestions();
               }}
             />
           ))}
@@ -402,16 +405,8 @@ function AiAssistant({
             ? "Rewriting the test — this can take a minute…"
             : "The assistant edits slides, questions, and settings; everything it changes shows up below for review before you publish."}
       </div>
-      {error && (
-        <div className="mt-3 text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-3">
-          {error}
-        </div>
-      )}
-      {doneMsg && (
-        <div className="mt-3 text-[13px] text-kp-good bg-kp-good-bg border border-kp-good-border rounded-lg p-3">
-          {doneMsg}
-        </div>
-      )}
+      {error && <NoticeBox tone="bad" className="mt-3">{error}</NoticeBox>}
+      {doneMsg && <NoticeBox tone="good" className="mt-3">{doneMsg}</NoticeBox>}
     </div>
   );
 }
@@ -441,20 +436,14 @@ function layoutValueOf(slide: KnowledgeSlide): string {
 function newSlide(layoutValue: string): KnowledgeSlide {
   const layout = SLIDE_LAYOUTS.find((l) => l.value === layoutValue) ?? SLIDE_LAYOUTS[3];
   const kind = layout.kind;
-  return {
+  return makeSlide({
     kind,
-    kicker: null,
     title: "New slide",
-    subtitle: null,
     items: kind === "agenda" ? ["First item"] : null,
     columns: kind === "bullets" ? [{ heading: "", bullets: [""] }] : null,
     steps: kind === "steps" ? [{ title: "Step one", description: "" }] : null,
-    body: null,
-    note: null,
-    imageUrl: null,
-    imageLabel: null,
     imagePosition: layout.imagePosition,
-  };
+  });
 }
 
 /* Switch a slide to a different template layout, carrying its text along.
@@ -513,6 +502,64 @@ function convertSlide(slide: KnowledgeSlide, kind: SlideKind): KnowledgeSlide {
       return { ...base, body: lines.join(" ") || null };
   }
 }
+
+function AddSlideSelect({ onAdd, compact }: { onAdd: (layoutValue: string) => void; compact?: boolean }) {
+  return (
+    <select
+      value=""
+      onChange={(e) => {
+        if (e.target.value) onAdd(e.target.value);
+      }}
+      className={`focus-kp bg-kp-surface border border-kp-border rounded-lg font-semibold text-kp-text-muted ${
+        compact ? "w-full px-1.5 py-1.5 text-[11.5px]" : "px-2.5 py-1.5 text-[12.5px]"
+      }`}
+    >
+      <option value="">+ Add slide…</option>
+      {SLIDE_LAYOUTS.map((l) => (
+        <option key={l.value} value={l.value}>{l.label}</option>
+      ))}
+    </select>
+  );
+}
+
+/* Filmstrip thumbnail — memoized so typing in Test Details (which re-renders
+ * the page) doesn't re-render every scaled-down SlideView. */
+const Thumb = memo(function Thumb({
+  slide,
+  index,
+  sectionNumber,
+  selected,
+  onSelect,
+}: {
+  slide: KnowledgeSlide;
+  index: number;
+  sectionNumber: number;
+  selected: boolean;
+  onSelect: (i: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(index)}
+      className={`block w-full rounded-lg overflow-hidden border-2 transition-colors ${
+        selected ? "border-kp-crimson" : "border-kp-border hover:border-kp-border-strong"
+      }`}
+      title={slide.title}
+    >
+      <div className="relative w-full" style={{ aspectRatio: "16/9" }}>
+        <div
+          className="absolute top-0 left-0 pointer-events-none"
+          style={{ width: 896, transform: "scale(0.1607)", transformOrigin: "top left" }}
+        >
+          <SlideView slide={slide} sectionNumber={sectionNumber} />
+        </div>
+      </div>
+      <div className="font-mono text-[9.5px] py-0.5 bg-kp-surface text-kp-text-faint">
+        {index + 1}
+      </div>
+    </button>
+  );
+});
 
 function SlideWorkbench({
   testId,
@@ -590,30 +637,22 @@ function SlideWorkbench({
   const moveSlide = (dir: -1 | 1) => {
     const j = index + dir;
     if (j < 0 || j >= slides.length) return;
-    const next = [...slides];
-    [next[index], next[j]] = [next[j], next[index]];
-    onChange(next);
+    onChange(move(slides, index, dir));
     setSelected(j);
+  };
+
+  const addSlideAt = (position: number) => (layoutValue: string) => {
+    const next = [...slides];
+    next.splice(position, 0, newSlide(layoutValue));
+    onChange(next);
+    setSelected(position);
   };
 
   if (slides.length === 0) {
     return (
       <div className="text-[13.5px] text-kp-text-muted bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5 flex items-center gap-4">
         No slides — employees go straight to the quiz.
-        <select
-          value=""
-          onChange={(e) => {
-            if (!e.target.value) return;
-            onChange([newSlide(e.target.value)]);
-            setSelected(0);
-          }}
-          className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold text-kp-text-muted"
-        >
-          <option value="">+ Add slide…</option>
-          {SLIDE_LAYOUTS.map((l) => (
-            <option key={l.value} value={l.value}>{l.label}</option>
-          ))}
-        </select>
+        <AddSlideSelect onAdd={addSlideAt(0)} />
       </div>
     );
   }
@@ -623,44 +662,16 @@ function SlideWorkbench({
       {/* Filmstrip */}
       <div className="w-[150px] shrink-0 space-y-2 max-h-[640px] overflow-y-auto pr-1">
         {slides.map((s, i) => (
-          <button
+          <Thumb
             key={i}
-            type="button"
-            onClick={() => setSelected(i)}
-            className={`block w-full rounded-lg overflow-hidden border-2 transition-colors ${
-              i === index ? "border-kp-crimson" : "border-kp-border hover:border-kp-border-strong"
-            }`}
-            title={s.title}
-          >
-            <div className="relative w-full" style={{ aspectRatio: "16/9" }}>
-              <div
-                className="absolute top-0 left-0 pointer-events-none"
-                style={{ width: 896, transform: "scale(0.1607)", transformOrigin: "top left" }}
-              >
-                <SlideView slide={s} sectionNumber={sectionNumberAt(slides, i)} />
-              </div>
-            </div>
-            <div className="font-mono text-[9.5px] py-0.5 bg-kp-surface text-kp-text-faint">
-              {i + 1}
-            </div>
-          </button>
+            slide={s}
+            index={i}
+            sectionNumber={sectionNumberAt(slides, i)}
+            selected={i === index}
+            onSelect={setSelected}
+          />
         ))}
-        <select
-          value=""
-          onChange={(e) => {
-            if (!e.target.value) return;
-            const next = [...slides];
-            next.splice(index + 1, 0, newSlide(e.target.value));
-            onChange(next);
-            setSelected(index + 1);
-          }}
-          className="focus-kp w-full bg-kp-surface border border-kp-border rounded-lg px-1.5 py-1.5 text-[11.5px] font-semibold text-kp-text-muted"
-        >
-          <option value="">+ Add slide…</option>
-          {SLIDE_LAYOUTS.map((l) => (
-            <option key={l.value} value={l.value}>{l.label}</option>
-          ))}
-        </select>
+        <AddSlideSelect compact onAdd={addSlideAt(index + 1)} />
       </div>
 
       {/* Canvas + toolbar */}
@@ -776,11 +787,7 @@ function SlideWorkbench({
           />
         )}
 
-        {uploadError && (
-          <div className="mt-3 text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-3">
-            {uploadError}
-          </div>
-        )}
+        {uploadError && <NoticeBox tone="bad" className="mt-3">{uploadError}</NoticeBox>}
         <p className="mt-2 text-[12px] text-kp-text-faint">
           Click any text on the slide to edit it · hover a row for reorder/remove controls ·
           Slide {index + 1} of {slides.length}
@@ -942,55 +949,3 @@ function QuestionEditor({
   );
 }
 
-/* ── Shared bits ─────────────────────────────────────────────────── */
-
-function Field({
-  label,
-  value,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="font-mono text-[11px] uppercase text-kp-text-faint">{label}</span>
-      <input
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className="focus-kp mt-1 w-full bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13.5px] disabled:opacity-50"
-      />
-    </label>
-  );
-}
-
-function SmallButton({
-  children,
-  onClick,
-  tone,
-  disabled,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  tone?: "danger";
-  disabled?: boolean;
-}) {
-  const cls =
-    tone === "danger"
-      ? "text-kp-bad border-kp-bad-border hover:bg-kp-bad-bg"
-      : "text-kp-text-muted border-kp-border hover:bg-kp-surface-alt hover:text-kp-navy";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`px-2.5 py-1.5 text-[12.5px] font-semibold border rounded-lg transition-colors disabled:opacity-30 ${cls}`}
-    >
-      {children}
-    </button>
-  );
-}

@@ -6,14 +6,17 @@
 //
 // Works on the SAVED state — the UI requires saving local edits first.
 
-import { onRequest } from "firebase-functions/v2/https";
-import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
-import Anthropic from "@anthropic-ai/sdk";
-import { ALLOWED_ORIGINS, verifyManager } from "./shared";
-
-const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
-const EDIT_MODEL = "claude-opus-4-8";
+import {
+  ANTHROPIC_API_KEY,
+  COLUMNS_ITEMS_SCHEMA,
+  ClaudeRefusalError,
+  QUESTION_PROPS,
+  STEPS_ITEMS_SCHEMA,
+  claudeJson,
+  managerEndpoint,
+  type GeneratedQuestion,
+} from "./shared";
 
 const SLIDE_SCHEMA = {
   type: "object" as const,
@@ -23,30 +26,8 @@ const SLIDE_SCHEMA = {
     title: { type: "string" },
     subtitle: { type: ["string", "null"] },
     items: { type: ["array", "null"], items: { type: "string" } },
-    columns: {
-      type: ["array", "null"],
-      items: {
-        type: "object" as const,
-        properties: {
-          heading: { type: "string" },
-          bullets: { type: "array", items: { type: "string" } },
-        },
-        required: ["heading", "bullets"],
-        additionalProperties: false,
-      },
-    },
-    steps: {
-      type: ["array", "null"],
-      items: {
-        type: "object" as const,
-        properties: {
-          title: { type: "string" },
-          description: { type: "string" },
-        },
-        required: ["title", "description"],
-        additionalProperties: false,
-      },
-    },
+    columns: { type: ["array", "null"], items: COLUMNS_ITEMS_SCHEMA },
+    steps: { type: ["array", "null"], items: STEPS_ITEMS_SCHEMA },
     body: { type: ["string", "null"] },
     note: { type: ["string", "null"] },
     imageUrl: {
@@ -79,13 +60,7 @@ const EDIT_SCHEMA = {
             type: ["string", "null"],
             description: "Existing question id to keep/update; null for a brand-new question",
           },
-          text: { type: "string" },
-          type: { type: "string", enum: ["MC", "TF"] },
-          optionA: { type: "string" },
-          optionB: { type: "string" },
-          optionC: { type: ["string", "null"] },
-          optionD: { type: ["string", "null"] },
-          correctAnswer: { type: "string", enum: ["A", "B", "C", "D"] },
+          ...QUESTION_PROPS,
         },
         required: ["id", "text", "type", "optionA", "optionB", "optionC", "optionD", "correctAnswer"],
         additionalProperties: false,
@@ -106,25 +81,9 @@ Editing rules:
 - Never use a personal name for a process contact — say "your admin" or the role title.
 - If the instruction asks for something impossible (e.g. an image that doesn't exist in the assets), do the closest sensible thing and leave the rest unchanged.`;
 
-export const editKnowledgeTest = onRequest(
-  {
-    cors: ALLOWED_ORIGINS,
-    secrets: [ANTHROPIC_API_KEY],
-    timeoutSeconds: 540,
-    memory: "1GiB",
-    region: "us-central1",
-  },
+export const editKnowledgeTest = managerEndpoint(
+  { secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 540, memory: "1GiB" },
   async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ ok: false, error: "POST only" });
-      return;
-    }
-    const auth = await verifyManager(req.headers.authorization);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-
     const { testId, instruction } = req.body ?? {};
     if (typeof testId !== "string" || !testId) {
       res.status(400).json({ ok: false, error: "Missing testId" });
@@ -166,16 +125,7 @@ export const editKnowledgeTest = onRequest(
       })),
     };
 
-    interface EditedQuestion {
-      id: string | null;
-      text: string;
-      type: "MC" | "TF";
-      optionA: string;
-      optionB: string;
-      optionC: string | null;
-      optionD: string | null;
-      correctAnswer: "A" | "B" | "C" | "D";
-    }
+    type EditedQuestion = GeneratedQuestion & { id: string | null };
     let edited: {
       name: string;
       description: string;
@@ -184,34 +134,21 @@ export const editKnowledgeTest = onRequest(
       questions: EditedQuestion[];
     };
     try {
-      const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
-      const stream = anthropic.messages.stream({
-        model: EDIT_MODEL,
-        max_tokens: 32000,
-        thinking: { type: "adaptive" },
+      edited = await claudeJson({
         system: SYSTEM_PROMPT,
-        output_config: { format: { type: "json_schema", schema: EDIT_SCHEMA } },
-        messages: [
-          {
-            role: "user",
-            content:
-              `Available image assets (for slide imageUrl values):\n` +
-              (assets.length
-                ? assets.map((a) => `- "${a.name}" (page ${a.page}): ${a.url}`).join("\n")
-                : "(none)") +
-              `\n\nCurrent test:\n${JSON.stringify(current, null, 2)}\n\nAdmin instruction: ${instruction.trim()}`,
-          },
-        ],
+        content:
+          `Available image assets (for slide imageUrl values):\n` +
+          (assets.length
+            ? assets.map((a) => `- "${a.name}" (page ${a.page}): ${a.url}`).join("\n")
+            : "(none)") +
+          `\n\nCurrent test:\n${JSON.stringify(current, null, 2)}\n\nAdmin instruction: ${instruction.trim()}`,
+        schema: EDIT_SCHEMA,
       });
-      const message = await stream.finalMessage();
-      if (message.stop_reason === "refusal") {
+    } catch (e) {
+      if (e instanceof ClaudeRefusalError) {
         res.status(422).json({ ok: false, error: "The model declined this instruction" });
         return;
       }
-      const jsonText = message.content.find((b) => b.type === "text");
-      if (!jsonText || jsonText.type !== "text") throw new Error("No text block in response");
-      edited = JSON.parse(jsonText.text);
-    } catch (e) {
       console.error("edit failed", e);
       res.status(502).json({ ok: false, error: `Edit failed: ${(e as Error).message}` });
       return;

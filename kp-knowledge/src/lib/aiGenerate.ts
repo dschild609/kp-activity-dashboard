@@ -1,14 +1,29 @@
 import { auth } from "./firebase";
 import type { Exhibit } from "./exhibitPages";
 
-const GENERATE_URL =
-  "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/generateKnowledgeTest";
-const UPLOAD_ASSET_URL =
-  "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/uploadKnowledgeAsset";
-const SNIP_ASSET_URL =
-  "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/snipKnowledgeAsset";
-const EDIT_URL =
-  "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/editKnowledgeTest";
+const FN_BASE = "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net";
+
+/* All KP Knowledge Cloud Functions speak the same protocol: POST JSON with
+ * a Firebase ID token, respond {ok, ...} or {ok:false, error}. */
+async function postFn<T>(name: string, payload: unknown, failLabel: string): Promise<T> {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+  const token = await user.getIdToken();
+
+  const resp = await fetch(`${FN_BASE}/${name}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok || !body.ok) {
+    throw new Error(body.error ?? `${failLabel} (HTTP ${resp.status})`);
+  }
+  return body as T;
+}
 
 export interface GenerateResult {
   testId: string;
@@ -26,10 +41,6 @@ export async function generateTestFromDoc(
   file: File,
   exhibits: Exhibit[] = []
 ): Promise<GenerateResult> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-
   const buffer = await file.arrayBuffer();
   let binary = "";
   const bytes = new Uint8Array(buffer);
@@ -37,21 +48,18 @@ export async function generateTestFromDoc(
   for (let i = 0; i < bytes.length; i += chunk) {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
-  const data = btoa(binary);
+  return postFn<GenerateResult>(
+    "generateKnowledgeTest",
+    { filename: file.name, data: btoa(binary), exhibits },
+    "Generation failed"
+  );
+}
 
-  const resp = await fetch(GENERATE_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ filename: file.name, data, exhibits }),
-  });
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok || !body.ok) {
-    throw new Error(body.error ?? `Generation failed (HTTP ${resp.status})`);
-  }
-  return body as GenerateResult;
+/* Applies a natural-language edit to a SAVED test — Claude rewrites the
+ * affected slides/questions server-side and the caller reloads. Can take
+ * a minute or two on Opus. */
+export async function editTestWithAI(testId: string, instruction: string): Promise<void> {
+  await postFn("editKnowledgeTest", { testId, instruction }, "Edit failed");
 }
 
 /* Adds a manually-uploaded image (or rasterized PDF pages) to a test's
@@ -60,45 +68,12 @@ export async function uploadTestAssets(
   testId: string,
   exhibit: Exhibit
 ): Promise<Array<{ name: string; page: number; url: string }>> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-
-  const resp = await fetch(UPLOAD_ASSET_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ testId, name: exhibit.name, pages: exhibit.pages }),
-  });
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok || !body.ok) {
-    throw new Error(body.error ?? `Upload failed (HTTP ${resp.status})`);
-  }
+  const body = await postFn<{ assets: Array<{ name: string; page: number; url: string }> }>(
+    "uploadKnowledgeAsset",
+    { testId, name: exhibit.name, pages: exhibit.pages },
+    "Upload failed"
+  );
   return body.assets;
-}
-
-/* Applies a natural-language edit to a SAVED test — Claude rewrites the
- * affected slides/questions server-side and the caller reloads. Can take
- * a minute or two on Opus. */
-export async function editTestWithAI(testId: string, instruction: string): Promise<void> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-
-  const resp = await fetch(EDIT_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ testId, instruction }),
-  });
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok || !body.ok) {
-    throw new Error(body.error ?? `Edit failed (HTTP ${resp.status})`);
-  }
 }
 
 /* Crops a region (fractions 0-1) out of one of the test's asset images —
@@ -109,21 +84,10 @@ export async function snipTestAsset(
   sourceUrl: string,
   region: { x: number; y: number; w: number; h: number }
 ): Promise<{ name: string; page: number; url: string }> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-
-  const resp = await fetch(SNIP_ASSET_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ testId, name, sourceUrl, region }),
-  });
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok || !body.ok) {
-    throw new Error(body.error ?? `Snip failed (HTTP ${resp.status})`);
-  }
+  const body = await postFn<{ asset: { name: string; page: number; url: string } }>(
+    "snipKnowledgeAsset",
+    { testId, name, sourceUrl, region },
+    "Snip failed"
+  );
   return body.asset;
 }

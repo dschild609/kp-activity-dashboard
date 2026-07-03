@@ -44,23 +44,39 @@ export interface KnowledgeSlide {
   imagePosition?: "left" | "right" | "top";
 }
 
+/* The one place a slide record is assembled — every field present, no
+ * undefined (Firestore rejects undefined values). All constructors and
+ * converters go through this. */
+export function makeSlide(partial: Partial<KnowledgeSlide> & { kind: SlideKind }): KnowledgeSlide {
+  return {
+    kind: partial.kind,
+    kicker: partial.kicker ?? null,
+    title: partial.title ?? "",
+    subtitle: partial.subtitle ?? null,
+    items: partial.items ?? null,
+    columns: partial.columns ?? null,
+    steps: partial.steps ?? null,
+    body: partial.body ?? null,
+    note: partial.note ?? null,
+    imageUrl: partial.imageUrl ?? null,
+    imageLabel: partial.imageLabel ?? null,
+    imagePosition: partial.imagePosition ?? "left",
+  };
+}
+
 /* Older tests stored slides as {title, bullets: string[]} — normalize to a
  * single-column bullets slide so everything downstream sees one shape. */
 export function normalizeSlide(raw: Record<string, unknown>): KnowledgeSlide {
-  if (typeof raw.kind === "string") return raw as unknown as KnowledgeSlide;
-  return {
+  if (typeof raw.kind === "string") {
+    return makeSlide(raw as unknown as Partial<KnowledgeSlide> & { kind: SlideKind });
+  }
+  return makeSlide({
     kind: "bullets",
-    kicker: null,
     title: (raw.title as string) ?? "",
-    subtitle: null,
-    items: null,
     columns: [{ heading: "", bullets: (raw.bullets as string[]) ?? [] }],
-    steps: null,
-    body: null,
-    note: null,
     imageUrl: (raw.imageUrl as string | null) ?? null,
     imageLabel: (raw.imageLabel as string | null) ?? null,
-  };
+  });
 }
 
 /* Stored exhibit page image (uploaded at AI-generation time) that slides

@@ -3,6 +3,7 @@ import { Link, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
 import { attemptGate, listAttempts, listTests } from "../lib/knowledge";
+import { Pill } from "../components/ui";
 
 export function TestsPage() {
   const { user } = useOutletContext<AuthState>();
@@ -173,16 +174,3 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
   );
 }
 
-export function Pill({ tone, children }: { tone: "good" | "bad" | "warn" | "neutral"; children: React.ReactNode }) {
-  const cls = {
-    good: "text-kp-good bg-kp-good-bg border-kp-good-border",
-    bad: "text-kp-bad bg-kp-bad-bg border-kp-bad-border",
-    warn: "text-kp-warn bg-kp-warn-bg border-kp-warn-border",
-    neutral: "text-kp-text-muted bg-kp-surface-alt border-kp-border",
-  }[tone];
-  return (
-    <span className={`shrink-0 px-2 py-0.5 text-[12.5px] font-bold rounded-[6px] border ${cls}`}>
-      {children}
-    </span>
-  );
-}

@@ -9,25 +9,22 @@ import {
   doc, getDoc, onSnapshot, setDoc, updateDoc, serverTimestamp,
 } from "firebase/firestore";
 import { auth, db, googleProvider } from "../lib/firebase";
-import type { UserRole, BranchCode } from "../types/roles";
+import type { UserRole } from "../types/roles";
 
 export interface AuthState {
   user: User | null;
   role: UserRole;
-  branch: BranchCode | null;
-  isAdmin: boolean;
   loading: boolean;
   error: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
-function getDevOverrides(): { role: UserRole; branch: BranchCode | null } | null {
+function getDevOverrides(): { role: UserRole } | null {
   if (!import.meta.env.DEV) return null;
   const devRole = localStorage.getItem("DEV_ROLE");
   if (!devRole) return null;
-  const devBranch = localStorage.getItem("DEV_BRANCH") as BranchCode | null;
-  return { role: devRole as UserRole, branch: devBranch };
+  return { role: devRole as UserRole };
 }
 
 interface UserDocData {
@@ -36,7 +33,6 @@ interface UserDocData {
   photoURL: string | null;
   role: string | null;
   hubRole: UserRole;
-  branch: BranchCode | null;
 }
 
 async function ensureUserDoc(u: User): Promise<void> {
@@ -134,20 +130,16 @@ export function useAuth(): AuthState {
     return {
       user: DEV_MOCK_USER,
       role: devOverrides.role,
-      branch: devOverrides.branch,
-      isAdmin: true,
       loading: false,
       error: null,
       signIn: noop,
-      signOut: () => { localStorage.removeItem("DEV_ROLE"); localStorage.removeItem("DEV_BRANCH"); window.location.reload(); return Promise.resolve(); },
+      signOut: () => { localStorage.removeItem("DEV_ROLE"); window.location.reload(); return Promise.resolve(); },
     };
   }
 
   const role: UserRole = user
     ? (userDoc?.hubRole ?? (userDoc?.role === "admin" ? "super_admin" : "pending"))
     : null;
-  const branch: BranchCode | null = userDoc?.branch ?? null;
-  const isAdmin = userDoc?.role === "admin";
 
-  return { user, role, branch, isAdmin, loading, error, signIn, signOut };
+  return { user, role, loading, error, signIn, signOut };
 }

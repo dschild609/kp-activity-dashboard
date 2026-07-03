@@ -3,10 +3,9 @@
 // Storage (no CORS constraints server-side), crop it with sharp at native
 // resolution, and save the detail as a new asset on the test.
 
-import { onRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import sharp from "sharp";
-import { ALLOWED_ORIGINS, uploadJpeg, verifyManager } from "./shared";
+import { managerEndpoint, uploadJpeg } from "./shared";
 
 interface Region {
   x: number;
@@ -27,19 +26,9 @@ function storagePathFromUrl(url: string): string | null {
   }
 }
 
-export const snipKnowledgeAsset = onRequest(
-  { cors: ALLOWED_ORIGINS, timeoutSeconds: 120, memory: "512MiB", region: "us-central1" },
+export const snipKnowledgeAsset = managerEndpoint(
+  { timeoutSeconds: 120, memory: "512MiB" },
   async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ ok: false, error: "POST only" });
-      return;
-    }
-    const auth = await verifyManager(req.headers.authorization);
-    if (!auth.ok) {
-      res.status(auth.status).json({ ok: false, error: auth.error });
-      return;
-    }
-
     const { testId, name, sourceUrl, region } = req.body ?? {};
     if (typeof testId !== "string" || !testId) {
       res.status(400).json({ ok: false, error: "Missing testId" });
@@ -84,10 +73,7 @@ export const snipKnowledgeAsset = onRequest(
         .extract({ left, top, width, height })
         .jpeg({ quality: 90 })
         .toBuffer();
-      const url = await uploadJpeg(
-        `knowledgeAssets/${testId}/snip-${Date.now()}.jpg`,
-        crop
-      );
+      const url = await uploadJpeg(`knowledgeAssets/${testId}/snip-${Date.now()}.jpg`, crop);
       const asset = { name, page: 1, url };
       await testRef.update({ assets: admin.firestore.FieldValue.arrayUnion(asset) });
       res.json({ ok: true, asset });

@@ -2,23 +2,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import { canManageTests, canViewAllResults } from "../types/roles";
-import type { KnowledgeAttempt, KnowledgeQuestion, KnowledgeTest } from "../types/knowledge";
+import type { KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
 import {
   createTest,
   deleteAttempt,
-  deleteQuestion,
   deleteTest,
-  getQuestions,
   listAttempts,
   listTests,
-  updateQuestion,
   updateTest,
 } from "../lib/knowledge";
 import { parseTestExcel } from "../lib/parseTestExcel";
 import { generateTestFromDoc } from "../lib/aiGenerate";
 import { MAX_TOTAL_PAGES, renderExhibit } from "../lib/exhibitPages";
 import { seedForkliftTest } from "../lib/seed";
-import { Pill } from "./TestsPage";
+import { NoticeBox, Pill, SmallButton, Th } from "../components/ui";
+import { DropZone } from "../components/DropZone";
 
 type Tab = "tests" | "ai" | "upload" | "results";
 
@@ -88,7 +86,6 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
   const [tests, setTests] = useState<KnowledgeTest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     listTests({ activeOnly: false }).then(setTests).catch((e) => setError((e as Error).message));
@@ -127,7 +124,7 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
   return (
     <section>
       <h2 className="kp-kicker mb-4">All Tests</h2>
-      {error && <ErrorBox message={error} />}
+      {error && <NoticeBox tone="bad" className="mb-4">{error}</NoticeBox>}
       {tests === null && <div className="text-[14px] text-kp-text-muted">Loading…</div>}
 
       {tests !== null && tests.length === 0 && (
@@ -184,9 +181,6 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
                 >
                   {test.status === "draft" ? "Review & Edit" : "Edit"}
                 </Link>
-                <SmallButton onClick={() => setExpanded(expanded === test.id ? null : test.id)}>
-                  {expanded === test.id ? "Close" : "Questions"}
-                </SmallButton>
                 <SmallButton onClick={() => handleToggleActive(test)}>
                   {test.isActive ? "Deactivate" : "Activate"}
                 </SmallButton>
@@ -195,145 +189,10 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
                 </SmallButton>
               </div>
             </div>
-            {expanded === test.id && <QuestionEditor test={test} onChanged={reload} />}
           </div>
         ))}
       </div>
     </section>
-  );
-}
-
-function QuestionEditor({ test, onChanged }: { test: KnowledgeTest; onChanged: () => void }) {
-  const [questions, setQuestions] = useState<KnowledgeQuestion[] | null>(null);
-  const [editing, setEditing] = useState<string | null>(null);
-
-  const reload = useCallback(() => {
-    getQuestions(test.id).then(setQuestions);
-  }, [test.id]);
-  useEffect(reload, [reload]);
-
-  async function handleDelete(q: KnowledgeQuestion) {
-    if (!window.confirm("Delete this question?")) return;
-    await deleteQuestion(test.id, q.id);
-    reload();
-    onChanged();
-  }
-
-  if (questions === null) {
-    return <div className="px-4 pb-4 text-[13px] text-kp-text-muted">Loading questions…</div>;
-  }
-
-  return (
-    <div className="border-t border-kp-border-soft px-4 py-3 space-y-2">
-      {questions.map((q, i) =>
-        editing === q.id ? (
-          <QuestionForm
-            key={q.id}
-            question={q}
-            onCancel={() => setEditing(null)}
-            onSave={async (fields) => {
-              await updateQuestion(test.id, q.id, fields);
-              setEditing(null);
-              reload();
-            }}
-          />
-        ) : (
-          <div key={q.id} className="flex items-start gap-3 py-1.5">
-            <span className="font-mono text-[11px] font-bold text-kp-text-faint mt-0.5">Q{i + 1}</span>
-            <div className="flex-1 text-[13.5px] text-kp-text">
-              {q.text}
-              <span className="text-kp-text-faint"> — correct: {q.correctAnswer}</span>
-            </div>
-            <SmallButton onClick={() => setEditing(q.id)}>Edit</SmallButton>
-            <SmallButton tone="danger" onClick={() => handleDelete(q)}>Delete</SmallButton>
-          </div>
-        )
-      )}
-    </div>
-  );
-}
-
-function QuestionForm({
-  question,
-  onSave,
-  onCancel,
-}: {
-  question: KnowledgeQuestion;
-  onSave: (fields: Partial<Omit<KnowledgeQuestion, "id">>) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const [text, setText] = useState(question.text);
-  const [optionA, setOptionA] = useState(question.optionA);
-  const [optionB, setOptionB] = useState(question.optionB);
-  const [optionC, setOptionC] = useState(question.optionC ?? "");
-  const [optionD, setOptionD] = useState(question.optionD ?? "");
-  const [correct, setCorrect] = useState(question.correctAnswer);
-  const [saving, setSaving] = useState(false);
-
-  return (
-    <div className="bg-kp-surface-alt border border-kp-border rounded-lg p-4 space-y-2">
-      <Field label="Question" value={text} onChange={setText} />
-      <div className="grid sm:grid-cols-2 gap-2">
-        <Field label="Option A" value={optionA} onChange={setOptionA} />
-        <Field label="Option B" value={optionB} onChange={setOptionB} />
-        {question.type === "MC" && (
-          <>
-            <Field label="Option C" value={optionC} onChange={setOptionC} />
-            <Field label="Option D" value={optionD} onChange={setOptionD} />
-          </>
-        )}
-      </div>
-      <div className="flex items-center gap-3">
-        <label className="font-mono text-[11px] uppercase text-kp-text-faint">Correct</label>
-        <select
-          value={correct}
-          onChange={(e) => setCorrect(e.target.value as KnowledgeQuestion["correctAnswer"])}
-          className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[13px]"
-        >
-          {(["A", "B", ...(question.type === "MC" ? ["C", "D"] : [])] as const).map((k) => (
-            <option key={k} value={k}>{k}</option>
-          ))}
-        </select>
-        <div className="ml-auto flex gap-2">
-          <SmallButton onClick={onCancel}>Cancel</SmallButton>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={async () => {
-              setSaving(true);
-              try {
-                await onSave({
-                  text,
-                  optionA,
-                  optionB,
-                  optionC: optionC || null,
-                  optionD: optionD || null,
-                  correctAnswer: correct,
-                });
-              } finally {
-                setSaving(false);
-              }
-            }}
-            className="px-3 py-1.5 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[12.5px] font-semibold rounded-lg disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="block">
-      <span className="font-mono text-[11px] uppercase text-kp-text-faint">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="focus-kp mt-1 w-full bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13.5px]"
-      />
-    </label>
   );
 }
 
@@ -410,37 +269,15 @@ function AiCreateAdmin() {
         and publish.
       </p>
 
-      <label
-        className={`flex flex-col items-center justify-center gap-2 p-8 bg-kp-surface border-2 border-dashed rounded-xl transition-colors ${
-          working
-            ? "border-kp-border-soft opacity-60 cursor-wait"
-            : "border-kp-border cursor-pointer hover:border-kp-border-strong"
-        }`}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          addFiles(e.dataTransfer.files);
-        }}
-      >
-        <div className="text-[26px]">✨</div>
-        <div className="text-[14px] font-semibold text-kp-text">
-          Drop files here, or click to choose
-        </div>
-        <div className="text-[12.5px] text-kp-text-faint">
-          One .docx as the content source · PDFs and images become slide screenshots
-        </div>
-        <input
-          type="file"
-          multiple
-          accept=".docx,.pdf,.png,.jpg,.jpeg,.webp"
-          className="hidden"
-          disabled={working}
-          onChange={(e) => {
-            if (e.target.files) addFiles(e.target.files);
-            e.target.value = "";
-          }}
-        />
-      </label>
+      <DropZone
+        icon="✨"
+        title="Drop files here, or click to choose"
+        hint="One .docx as the content source · PDFs and images become slide screenshots"
+        accept=".docx,.pdf,.png,.jpg,.jpeg,.webp"
+        multiple
+        disabled={working}
+        onFiles={addFiles}
+      />
 
       {(sourceDoc || exhibitFiles.length > 0) && (
         <div className="mt-4 bg-kp-surface border border-kp-border rounded-xl shadow-2xs divide-y divide-kp-border-soft">
@@ -484,9 +321,7 @@ function AiCreateAdmin() {
         )}
       </div>
       {status.kind === "error" && (
-        <div className="mt-4 text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-3">
-          {status.message}
-        </div>
+        <NoticeBox tone="bad" className="mt-4">{status.message}</NoticeBox>
       )}
 
       <div className="mt-8 bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
@@ -582,43 +417,23 @@ function UploadAdmin({ authed }: { authed: AuthState }) {
         />
       </label>
 
-      <label
-        className="flex flex-col items-center justify-center gap-2 p-10 bg-kp-surface border-2 border-dashed border-kp-border rounded-xl cursor-pointer hover:border-kp-border-strong transition-colors"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const f = e.dataTransfer.files[0];
-          if (f) handleFile(f);
-        }}
-      >
-        <div className="text-[26px]">📄</div>
-        <div className="text-[14px] font-semibold text-kp-text">
-          Drop an .xlsx file here, or click to choose
-        </div>
-        <div className="text-[12.5px] text-kp-text-faint">
-          Needs "Questions" and "Settings" sheets
-        </div>
-        <input
-          type="file"
-          accept=".xlsx"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleFile(f);
-            e.target.value = "";
-          }}
-        />
-      </label>
+      <DropZone
+        icon="📄"
+        title="Drop an .xlsx file here, or click to choose"
+        hint='Needs "Questions" and "Settings" sheets'
+        accept=".xlsx"
+        onFiles={(files) => handleFile(files[0])}
+      />
 
       {status.kind === "working" && (
         <div className="mt-4 text-[13.5px] text-kp-text-muted">Parsing and creating test…</div>
       )}
       {status.kind === "done" && (
-        <div className="mt-4 text-[13.5px] text-kp-good bg-kp-good-bg border border-kp-good-border rounded-lg p-3">
+        <NoticeBox tone="good" className="mt-4">
           Created <strong>{status.name}</strong> with {status.count} questions.
-        </div>
+        </NoticeBox>
       )}
-      {status.kind === "error" && <div className="mt-4"><ErrorBox message={status.message} /></div>}
+      {status.kind === "error" && <NoticeBox tone="bad" className="mt-4">{status.message}</NoticeBox>}
 
       <div className="mt-8 bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
         <h3 className="kp-kicker mb-3">Format</h3>
@@ -689,7 +504,7 @@ function ResultsAdmin() {
   return (
     <section>
       <h2 className="kp-kicker mb-4">All Results</h2>
-      {error && <ErrorBox message={error} />}
+      {error && <NoticeBox tone="bad" className="mb-4">{error}</NoticeBox>}
 
       <div className="flex flex-wrap gap-3 mb-4">
         <input
@@ -775,48 +590,3 @@ function ResultsAdmin() {
   );
 }
 
-/* ── Shared bits ─────────────────────────────────────────────────── */
-
-function SmallButton({
-  children,
-  onClick,
-  tone,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  tone?: "danger";
-}) {
-  const cls =
-    tone === "danger"
-      ? "text-kp-bad border-kp-bad-border hover:bg-kp-bad-bg"
-      : "text-kp-text-muted border-kp-border hover:bg-kp-surface-alt hover:text-kp-navy";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-2.5 py-1.5 text-[12.5px] font-semibold border rounded-lg transition-colors ${cls}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ErrorBox({ message }: { message: string }) {
-  return (
-    <div className="text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-3 mb-4">
-      {message}
-    </div>
-  );
-}
-
-function Th({ children, align }: { children: React.ReactNode; align?: "right" }) {
-  return (
-    <th
-      className={`px-4 py-2.5 font-mono text-[11.5px] font-bold tracking-[0.08em] uppercase text-kp-text-muted ${
-        align === "right" ? "text-right" : "text-left"
-      }`}
-    >
-      {children}
-    </th>
-  );
-}

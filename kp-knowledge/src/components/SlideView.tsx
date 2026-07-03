@@ -142,7 +142,7 @@ function AddRow({ onAdd, label }: { onAdd: () => void; label?: string }) {
   );
 }
 
-function move<T>(arr: T[], i: number, dir: -1 | 1): T[] {
+export function move<T>(arr: T[], i: number, dir: -1 | 1): T[] {
   const j = i + dir;
   if (j < 0 || j >= arr.length) return arr;
   const next = [...arr];
@@ -435,19 +435,20 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
     const next = IMAGE_POSITIONS[(IMAGE_POSITIONS.indexOf(position) + 1) % IMAGE_POSITIONS.length];
     c?.({ ...slide, imagePosition: next });
   };
+  const img = slide.imageUrl && (
+    <img
+      src={slide.imageUrl}
+      alt={slide.imageLabel ?? "Slide illustration"}
+      className="max-w-full max-h-full object-contain bg-white"
+      style={{ boxShadow: "0 2px 10px rgba(19,32,43,.18)" }}
+    />
+  );
   const imagePane = (
     <div className="relative flex items-center justify-center" style={{ background: "#e7e5dd" }}>
       {slide.imageUrl ? (
         <>
           {edit ? (
-            <div className="absolute inset-0 flex items-center justify-center p-4">
-              <img
-                src={slide.imageUrl}
-                alt={slide.imageLabel ?? "Slide illustration"}
-                className="max-w-full max-h-full object-contain bg-white"
-                style={{ boxShadow: "0 2px 10px rgba(19,32,43,.18)" }}
-              />
-            </div>
+            <div className="absolute inset-0 flex items-center justify-center p-4">{img}</div>
           ) : (
             <a
               href={slide.imageUrl}
@@ -456,12 +457,7 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
               className="absolute inset-0 flex items-center justify-center p-4"
               title="Open full size"
             >
-              <img
-                src={slide.imageUrl}
-                alt={slide.imageLabel ?? "Slide illustration"}
-                className="max-w-full max-h-full object-contain bg-white"
-                style={{ boxShadow: "0 2px 10px rgba(19,32,43,.18)" }}
-              />
+              {img}
             </a>
           )}
           {edit && (
@@ -505,13 +501,17 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
       )}
     </div>
   );
-  const textPane = (
-    <div className="px-9 py-9 flex flex-col justify-center overflow-y-auto">
+  const heading = (compact: boolean) => (
+    <>
       <Kicker text={slide.kicker} color={CRIMSON} edit={edit} commit={(v) => c?.({ ...slide, kicker: v })} />
-      <h2 className="font-extrabold leading-tight tracking-[-0.02em]" style={{ fontSize: 28, color: INK }}>
+      <h2 className="font-extrabold leading-tight tracking-[-0.02em]" style={{ fontSize: compact ? 24 : 28, color: INK }}>
         <Txt value={slide.title} placeholder="Title" onCommit={c ? (v) => c({ ...slide, title: v }) : undefined} />
       </h2>
-      <p className="mt-4 text-[14.5px] leading-relaxed" style={{ color: MUTED }}>
+    </>
+  );
+  const bodyAndNote = (compact: boolean) => (
+    <>
+      <p className={`${compact ? "text-[14px]" : "mt-4 text-[14.5px]"} leading-relaxed`} style={{ color: MUTED }}>
         <Txt
           value={slide.body ?? ""}
           placeholder={edit ? "Body paragraph" : ""}
@@ -519,7 +519,10 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
         />
       </p>
       {(slide.note || edit) && (
-        <div className="mt-5 pl-3.5 text-[13px] leading-relaxed" style={{ borderLeft: `3px solid ${CRIMSON}`, color: MUTED }}>
+        <div
+          className={`${compact ? "mt-3 text-[12.5px]" : "mt-5 text-[13px]"} pl-3.5 leading-relaxed`}
+          style={{ borderLeft: `3px solid ${CRIMSON}`, color: MUTED }}
+        >
           <Txt
             value={slide.note ?? ""}
             placeholder={edit ? "Callout note (optional)" : ""}
@@ -527,13 +530,18 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
           />
         </div>
       )}
-      {slide.imageLabel && (
-        <div className="mt-5 font-mono uppercase" style={{ fontSize: 10.5, letterSpacing: "0.12em", color: "#98a1a8" }}>
-          {slide.imageLabel}
-        </div>
-      )}
-    </div>
+    </>
   );
+  const label = (compact: boolean) =>
+    slide.imageLabel && (
+      <div
+        className={`${compact ? "mt-2.5" : "mt-5"} font-mono uppercase`}
+        style={{ fontSize: compact ? 10 : 10.5, letterSpacing: "0.12em", color: "#98a1a8" }}
+      >
+        {slide.imageLabel}
+      </div>
+    );
+
   if (imageTop) {
     // Horizontal variant: screenshot across the top, lower-third text band —
     // best for wide crops (a form row, a signature line, a table header).
@@ -542,38 +550,21 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
         {imagePane}
         <div className="px-10 py-5 grid gap-8 overflow-y-auto" style={{ gridTemplateColumns: "38% 1fr" }}>
           <div>
-            <Kicker text={slide.kicker} color={CRIMSON} edit={edit} commit={(v) => c?.({ ...slide, kicker: v })} />
-            <h2 className="font-extrabold leading-tight tracking-[-0.02em]" style={{ fontSize: 24, color: INK }}>
-              <Txt value={slide.title} placeholder="Title" onCommit={c ? (v) => c({ ...slide, title: v }) : undefined} />
-            </h2>
-            {slide.imageLabel && (
-              <div className="mt-2.5 font-mono uppercase" style={{ fontSize: 10, letterSpacing: "0.12em", color: "#98a1a8" }}>
-                {slide.imageLabel}
-              </div>
-            )}
+            {heading(true)}
+            {label(true)}
           </div>
-          <div className="flex flex-col justify-center">
-            <p className="text-[14px] leading-relaxed" style={{ color: MUTED }}>
-              <Txt
-                value={slide.body ?? ""}
-                placeholder={edit ? "Body paragraph" : ""}
-                onCommit={c ? (v) => c({ ...slide, body: v || null }) : undefined}
-              />
-            </p>
-            {(slide.note || edit) && (
-              <div className="mt-3 pl-3.5 text-[12.5px] leading-relaxed" style={{ borderLeft: `3px solid ${CRIMSON}`, color: MUTED }}>
-                <Txt
-                  value={slide.note ?? ""}
-                  placeholder={edit ? "Callout note (optional)" : ""}
-                  onCommit={c ? (v) => c({ ...slide, note: v || null }) : undefined}
-                />
-              </div>
-            )}
-          </div>
+          <div className="flex flex-col justify-center">{bodyAndNote(true)}</div>
         </div>
       </div>
     );
   }
+  const textPane = (
+    <div className="px-9 py-9 flex flex-col justify-center overflow-y-auto">
+      {heading(false)}
+      {bodyAndNote(false)}
+      {label(false)}
+    </div>
+  );
   return (
     <div className="absolute inset-0 grid" style={{ gridTemplateColumns: imageRight ? "54% 46%" : "46% 54%" }}>
       {imageRight ? (

@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+/* KP "Command" theme — drop-in token block for KP-family apps.
+ * Source of truth: claude.ai/design "KP Hub" project (Command direction).
+ * Reference implementation: kp-ops-hub/src/index.css. */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* KP Brand — Crimson #94002A and Ink #0B141B sampled from the KP logo */
+  --color-kp-navy: #0b141b; /* ink — primary buttons, dark accents */
+  --color-kp-navy-hover: #15212b;
+  --color-kp-navy-muted: #8499a7;
+  --color-kp-crimson: #94002a;
+  --color-kp-crimson-hover: #7a0023;
+  /* Soft crimson pill — active nav tabs, selected chips */
+  --color-kp-crimson-soft: #f7e4e8;
+  --color-kp-crimson-soft-text: #94002a;
+  /* Chrome — top bar / page-header bands (separate from button ink so dark
+     mode can keep buttons visible while chrome melts into the canvas) */
+  --color-kp-chrome: #0b141b;
+  --color-kp-chrome-border: #1b2935;
+  --color-kp-bg: #e6eaee;
+  --color-kp-border: #c7d2dc;
+  --color-kp-border-soft: #dce3ea;
+  --color-kp-border-strong: #9fb0bf;
+  --color-kp-text: #0b141b;
+  --color-kp-text-muted: #516170;
+  --color-kp-text-faint: #8493a1;
+
+  /* Semantic surface tokens — card/panel/dropdown backgrounds */
+  --color-kp-surface: #ffffff;
+  --color-kp-surface-alt: #f3f6f9;
+
+  /* Accent for text that is ink in light mode, light blue in dark */
+  --color-kp-accent: #0b141b;
+
+  /* Status palette (from the design system's Status row) */
+  --color-kp-good: #0f9d63;
+  --color-kp-good-bg: #e1f5ec;
+  --color-kp-good-border: #b6e6cd;
+  --color-kp-warn: #c2820c;
+  --color-kp-warn-bg: #fbf0d6;
+  --color-kp-warn-border: #efd79e;
+  --color-kp-bad: #ce3340;
+  --color-kp-bad-bg: #fbe7e9;
+  --color-kp-bad-border: #f2c6cb;
+  --color-kp-info: #1f6fd0;
+  --color-kp-violet: #6b49cc;
+
+  /* Focus ring + bar-chart fills */
+  --kp-focus-ring: rgba(148, 0, 42, 0.15);
+  --kp-bar-neutral: #dbe1e8;
+  --kp-bar-down: #f2c6cb;
+
+  /* Type: Hanken Grotesk for everything (incl. numerals, tabular);
+     Geist Mono ONLY for micro-labels — kickers, badges, column headers */
+  --font-sans: "Hanken Grotesk", "Segoe UI", system-ui, -apple-system,
+    BlinkMacSystemFont, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Command geometry: firm-but-not-brutal radii; flat panels — crisp 1px
+     borders carry the depth, so resting shadows collapse to a hairline.
+     Floating overlays (lg/xl/2xl) keep real shadows. Shadows go through
+     --kp-shadow-flat because Tailwind inlines shadow tokens into utilities
+     (colors stay var()-based) — the indirection is what lets .dark swap the
+     hairline for an inset top highlight. */
+  --radius-lg: 7px;
+  --radius-xl: 10px;
+  --radius-2xl: 14px;
+  --shadow-2xs: var(--kp-shadow-flat);
+  --shadow-xs: var(--kp-shadow-flat);
+  --shadow-sm: var(--kp-shadow-flat);
+  --shadow-md: var(--kp-shadow-flat);
+}
+
+:root {
+  --kp-shadow-flat: 0 1px 0 rgba(11, 20, 27, 0.05);
+}
+
+/* ── Dark mode palette (Command · Dark) ─────────────────────────── */
+.dark {
+  --color-kp-navy: #1b2935; /* buttons stay visible on dark surfaces */
+  --color-kp-navy-hover: #24394a;
+  --color-kp-navy-muted: #7c93a1;
+  --color-kp-crimson: #ff3b5c;
+  --color-kp-crimson-hover: #e63350;
+  --color-kp-crimson-soft: rgba(255, 59, 92, 0.14);
+  --color-kp-crimson-soft-text: #ff889a;
+  --color-kp-chrome: #070c11;
+  --color-kp-chrome-border: #162631;
+  --color-kp-bg: #070c11;
+  --color-kp-surface: #0f1a23;
+  --color-kp-surface-alt: #13212c;
+  --color-kp-text: #eaf1f6;
+  --color-kp-text-muted: #8fa6b4;
+  --color-kp-text-faint: #5e7280;
+  --color-kp-border: #24394a;
+  --color-kp-border-soft: #16242f;
+  --color-kp-border-strong: #3a586e;
+  --color-kp-accent: #4da6ff;
+  --color-kp-good: #23e0a0;
+  --color-kp-good-bg: rgba(35, 224, 160, 0.1);
+  --color-kp-good-border: rgba(35, 224, 160, 0.28);
+  --color-kp-warn: #ffc24b;
+  --color-kp-warn-bg: rgba(255, 194, 75, 0.1);
+  --color-kp-warn-border: rgba(255, 194, 75, 0.28);
+  --color-kp-bad: #ff5a6e;
+  --color-kp-bad-bg: rgba(255, 90, 110, 0.1);
+  --color-kp-bad-border: rgba(255, 90, 110, 0.3);
+  --color-kp-info: #4da6ff;
+  --color-kp-violet: #a98bff;
+  --kp-focus-ring: rgba(255, 59, 92, 0.3);
+  --kp-bar-neutral: #24394a;
+  --kp-bar-down: #4a2430;
+  /* Flat panels read as an inset top highlight in dark */
+  --kp-shadow-flat: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  color-scheme: dark;
+}
+
+/* Keep bg-kp-navy ink across both modes (chrome, primary buttons), but flip
+ * text-kp-navy / ring-kp-navy to readable colors on dark surfaces — saves
+ * sprinkling `dark:text-kp-text` across every heading. */
+.dark .text-kp-navy { color: var(--color-kp-text); }
+.dark .hover\:text-kp-navy:hover { color: var(--color-kp-text); }
+.dark .ring-kp-navy { --tw-ring-color: var(--color-kp-accent); }
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--color-kp-bg);
+  color: var(--color-kp-text);
+  font-family: var(--font-sans);
+  /* Numerals line up in columns everywhere (design rule: tabular figures) */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(148, 0, 42, 0.18);
+}
+.dark ::selection {
+  background: rgba(255, 59, 92, 0.3);
+}
+
+/* Section label / kicker — the Command signature: a Geist Mono micro-label
+ * with a crimson tick. Use on every section header. */
+.kp-kicker {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-kp-text-faint);
+  border-left: 3px solid var(--color-kp-crimson);
+  padding-left: 10px;
+}
+
+/* Shared focus ring */
+.focus-kp:focus {
+  outline: none;
+  border-color: var(--color-kp-accent);
+  box-shadow: 0 0 0 2px var(--kp-focus-ring);
+}

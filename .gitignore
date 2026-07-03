@@ -17,3 +17,4 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
+kp-test-app/

@@ -1,0 +1,238 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "streamlit",
+        "run",
+        "dashboard.py",
+        "--server.port",
+        "8503",
+        "--server.headless",
+        "true"
+      ],
+      "port": 8503
+    },
+    {
+      "name": "territory-map",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "streamlit",
+        "run",
+        "territory_map.py",
+        "--server.port",
+        "8503",
+        "--server.headless",
+        "true"
+      ],
+      "port": 8503
+    },
+    {
+      "name": "kp-test-frontend",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-test-app/frontend",
+      "port": 3000
+    },
+    {
+      "name": "kp-interview-app",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-interview-app",
+      "port": 3001,
+      "autoPort": true
+    },
+    {
+      "name": "kp-dashboard",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8080"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-dashboard",
+      "port": 8080
+    },
+    {
+      "name": "kp-prospects",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-prospects",
+      "port": 5173,
+      "autoPort": true
+    },
+    {
+      "name": "kp-ops-hub",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-ops-hub",
+      "port": 5174,
+      "autoPort": true
+    },
+    {
+      "name": "kp-onsite-hub",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-onsite-hub",
+      "port": 5175,
+      "autoPort": true
+    },
+    {
+      "name": "kp-forecast",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-forecast",
+      "port": 5180,
+      "autoPort": true
+    },
+    {
+      "name": "kp-ar-reporting",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-ar-reporting",
+      "port": 5185,
+      "autoPort": true
+    },
+    {
+      "name": "kp-dashboard-v2",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-dashboard-v2",
+      "port": 5176,
+      "autoPort": true
+    },
+    {
+      "name": "kp-job-submissions",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-job-submissions",
+      "port": 5190,
+      "autoPort": true
+    },
+    {
+      "name": "mockups",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8770"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/mockups",
+      "port": 8770
+    },
+    {
+      "name": "kp-job-post-rating",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-job-post-rating",
+      "port": 3010,
+      "autoPort": true
+    },
+    {
+      "name": "kp-remote-hub",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-remote-hub",
+      "port": 5195,
+      "autoPort": true
+    },
+    {
+      "name": "kp-am-hub",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-am-hub",
+      "port": 5181,
+      "autoPort": true
+    },
+    {
+      "name": "kp-hr-hub",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-hr-hub",
+      "port": 5178,
+      "autoPort": true
+    },
+    {
+      "name": "kpshub-portal",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8772"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kpshub-portal/public",
+      "port": 8772
+    },
+    {
+      "name": "kp-knowledge",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5183",
+        "--strictPort"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-knowledge",
+      "port": 5183
+    },
+    {
+      "name": "kp-client-dashboard",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-client-dashboard",
+      "port": 5180
+    }
+  ]
+}

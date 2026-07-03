@@ -16,6 +16,7 @@ import {
 } from "../lib/knowledge";
 import { parseTestExcel } from "../lib/parseTestExcel";
 import { generateTestFromDoc } from "../lib/aiGenerate";
+import { MAX_TOTAL_PAGES, renderExhibit } from "../lib/exhibitPages";
 import { seedForkliftTest } from "../lib/seed";
 import { Pill } from "./TestsPage";
 
@@ -340,40 +341,77 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 
 function AiCreateAdmin() {
   const navigate = useNavigate();
+  const [sourceDoc, setSourceDoc] = useState<File | null>(null);
+  const [exhibitFiles, setExhibitFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<
     | { kind: "idle" }
-    | { kind: "working"; filename: string }
+    | { kind: "working"; step: string }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
 
-  async function handleFile(file: File) {
-    if (!file.name.toLowerCase().endsWith(".docx")) {
-      setStatus({ kind: "error", message: "Please choose a Word document (.docx)." });
-      return;
+  const working = status.kind === "working";
+
+  function addFiles(files: FileList | File[]) {
+    if (working) return;
+    setStatus({ kind: "idle" });
+    for (const f of Array.from(files)) {
+      const lower = f.name.toLowerCase();
+      if (lower.endsWith(".docx")) {
+        setSourceDoc(f); // last .docx wins as the content source
+      } else if (/\.(pdf|png|jpe?g|webp)$/.test(lower)) {
+        setExhibitFiles((prev) =>
+          prev.some((p) => p.name === f.name) ? prev : [...prev, f]
+        );
+      } else {
+        setStatus({
+          kind: "error",
+          message: `"${f.name}" isn't supported — use a .docx source plus PDF/image exhibits.`,
+        });
+      }
     }
-    setStatus({ kind: "working", filename: file.name });
+  }
+
+  async function handleGenerate() {
+    if (!sourceDoc || working) return;
     try {
-      const result = await generateTestFromDoc(file);
+      const exhibits = [];
+      for (const f of exhibitFiles) {
+        setStatus({ kind: "working", step: `Preparing exhibit "${f.name}"…` });
+        exhibits.push(await renderExhibit(f));
+      }
+      const totalPages = exhibits.reduce((n, e) => n + e.pages.length, 0);
+      if (totalPages > MAX_TOTAL_PAGES) {
+        setStatus({
+          kind: "error",
+          message: `Exhibits total ${totalPages} pages — the limit is ${MAX_TOTAL_PAGES}. Remove some pages or files.`,
+        });
+        return;
+      }
+      setStatus({
+        kind: "working",
+        step: "Writing slides and quiz — this can take a minute or two…",
+      });
+      const result = await generateTestFromDoc(sourceDoc, exhibits);
       navigate(`/admin/tests/${result.testId}`);
     } catch (e) {
       setStatus({ kind: "error", message: (e as Error).message });
     }
   }
 
-  const working = status.kind === "working";
-
   return (
     <section className="max-w-2xl">
       <h2 className="kp-kicker mb-4">Create a Test with AI</h2>
       <p className="text-[13.5px] text-kp-text-muted mb-5">
         Upload a Word document — a policy, procedure, or training doc — and the AI
-        builds a slide deck teaching its content plus a quiz. Nothing goes live:
-        the result lands as a <strong className="text-kp-text">draft</strong> for
-        you to review, edit, and publish.
+        builds a slide deck teaching its content plus a quiz. Add supporting files
+        (a blank W-4, for example) and the slides will include screenshots of the
+        relevant pages. Nothing goes live: the result lands as a{" "}
+        <strong className="text-kp-text">draft</strong> for you to review, edit,
+        and publish.
       </p>
 
       <label
-        className={`flex flex-col items-center justify-center gap-2 p-10 bg-kp-surface border-2 border-dashed rounded-xl transition-colors ${
+        className={`flex flex-col items-center justify-center gap-2 p-8 bg-kp-surface border-2 border-dashed rounded-xl transition-colors ${
           working
             ? "border-kp-border-soft opacity-60 cursor-wait"
             : "border-kp-border cursor-pointer hover:border-kp-border-strong"
@@ -381,40 +419,70 @@ function AiCreateAdmin() {
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          if (working) return;
-          const f = e.dataTransfer.files[0];
-          if (f) handleFile(f);
+          addFiles(e.dataTransfer.files);
         }}
       >
         <div className="text-[26px]">✨</div>
         <div className="text-[14px] font-semibold text-kp-text">
-          {working ? "Generating…" : "Drop a .docx here, or click to choose"}
+          Drop files here, or click to choose
         </div>
         <div className="text-[12.5px] text-kp-text-faint">
-          {working
-            ? "Reading the document and writing slides + quiz — this can take a minute or two"
-            : "Word documents only for now"}
+          One .docx as the content source · PDFs and images become slide screenshots
         </div>
         <input
           type="file"
-          accept=".docx"
+          multiple
+          accept=".docx,.pdf,.png,.jpg,.jpeg,.webp"
           className="hidden"
           disabled={working}
           onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleFile(f);
+            if (e.target.files) addFiles(e.target.files);
             e.target.value = "";
           }}
         />
       </label>
 
-      {working && (
-        <div className="mt-4 flex items-center gap-3 text-[13.5px] text-kp-text-muted">
-          <span className="inline-block w-4 h-4 border-2 border-kp-crimson border-t-transparent rounded-full animate-spin" />
-          Analyzing <strong className="text-kp-text">{status.filename}</strong> — you'll land on
-          the draft editor when it's ready.
+      {(sourceDoc || exhibitFiles.length > 0) && (
+        <div className="mt-4 bg-kp-surface border border-kp-border rounded-xl shadow-2xs divide-y divide-kp-border-soft">
+          <FileRow
+            icon="📄"
+            label={sourceDoc ? sourceDoc.name : "No source document yet"}
+            hint="Content source (.docx)"
+            missing={!sourceDoc}
+            onRemove={sourceDoc && !working ? () => setSourceDoc(null) : undefined}
+          />
+          {exhibitFiles.map((f) => (
+            <FileRow
+              key={f.name}
+              icon="🖼️"
+              label={f.name}
+              hint="Exhibit — pages become slide screenshots"
+              onRemove={
+                working
+                  ? undefined
+                  : () => setExhibitFiles((prev) => prev.filter((p) => p.name !== f.name))
+              }
+            />
+          ))}
         </div>
       )}
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          disabled={!sourceDoc || working}
+          onClick={handleGenerate}
+          className="px-5 py-2.5 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[14px] font-semibold rounded-lg transition-colors disabled:opacity-40"
+        >
+          {working ? "Generating…" : "Generate Test"}
+        </button>
+        {working && (
+          <span className="flex items-center gap-2 text-[13px] text-kp-text-muted">
+            <span className="inline-block w-4 h-4 border-2 border-kp-crimson border-t-transparent rounded-full animate-spin" />
+            {status.step}
+          </span>
+        )}
+      </div>
       {status.kind === "error" && (
         <div className="mt-4 text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-3">
           {status.message}
@@ -424,13 +492,51 @@ function AiCreateAdmin() {
       <div className="mt-8 bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
         <h3 className="kp-kicker mb-3">How it works</h3>
         <ol className="text-[13px] text-kp-text-muted space-y-1.5 list-decimal pl-4">
-          <li>The document's text is extracted and sent to Claude.</li>
-          <li>Claude writes training slides covering the content, then a 10–15 question quiz on those slides.</li>
-          <li>You review the draft — edit any slide, question, or setting, in full.</li>
+          <li>The Word document's text is extracted; exhibit PDFs are rendered to page images in your browser.</li>
+          <li>Claude writes training slides covering the content — placing exhibit screenshots on the slides they belong to — then a 10–15 question quiz.</li>
+          <li>You review the draft — edit any slide, screenshot, question, or setting, in full.</li>
           <li>Approve &amp; Publish makes it visible to staff, who view the slides and then take the quiz.</li>
         </ol>
       </div>
     </section>
+  );
+}
+
+function FileRow({
+  icon,
+  label,
+  hint,
+  missing,
+  onRemove,
+}: {
+  icon: string;
+  label: string;
+  hint: string;
+  missing?: boolean;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5">
+      <span className="text-[16px]">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className={`text-[13.5px] font-semibold truncate ${missing ? "text-kp-text-faint italic" : "text-kp-text"}`}>
+          {label}
+        </div>
+        <div className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-kp-text-faint">
+          {hint}
+        </div>
+      </div>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-kp-text-faint hover:text-kp-bad text-[13px] px-1"
+          title="Remove"
+        >
+          ✕
+        </button>
+      )}
+    </div>
   );
 }
 

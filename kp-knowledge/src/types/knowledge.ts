@@ -6,6 +6,18 @@ export type AnswerKey = "A" | "B" | "C" | "D";
 export interface KnowledgeSlide {
   title: string;
   bullets: string[];
+  /* Screenshot shown on the slide (e.g. a blank W-4 page) — a Storage URL
+   * from the test's assets; null/absent = text-only slide */
+  imageUrl?: string | null;
+  imageLabel?: string | null;
+}
+
+/* Stored exhibit page image (uploaded at AI-generation time) that slides
+ * can display; kept on the test doc so the editor can offer a picker */
+export interface KnowledgeAsset {
+  name: string;
+  page: number;
+  url: string;
 }
 
 export interface KnowledgeTest {
@@ -23,6 +35,8 @@ export interface KnowledgeTest {
   sourceDocName: string | null;
   /* Training slides shown before the quiz (AI flow); empty = quiz only */
   slides: KnowledgeSlide[];
+  /* Exhibit page images available to this test's slides */
+  assets: KnowledgeAsset[];
   tags: string[];
   questionCount: number;
   createdBy: string;

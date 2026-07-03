@@ -4,6 +4,7 @@ import type { AuthState } from "../hooks/useAuth";
 import { canManageTests } from "../types/roles";
 import type {
   AnswerKey,
+  KnowledgeAsset,
   KnowledgeQuestion,
   KnowledgeSlide,
   KnowledgeTest,
@@ -188,6 +189,7 @@ export function AdminTestEditorPage() {
               index={i}
               total={slides.length}
               slide={slide}
+              assets={test.assets}
               onChange={(next) => {
                 setSlides(slides.map((s, j) => (j === i ? next : s)));
                 markDirty();
@@ -293,6 +295,7 @@ function SlideEditor({
   index,
   total,
   slide,
+  assets,
   onChange,
   onMove,
   onDelete,
@@ -300,6 +303,7 @@ function SlideEditor({
   index: number;
   total: number;
   slide: KnowledgeSlide;
+  assets: KnowledgeAsset[];
   onChange: (next: KnowledgeSlide) => void;
   onMove: (dir: -1 | 1) => void;
   onDelete: () => void;
@@ -348,6 +352,46 @@ function SlideEditor({
           + bullet
         </button>
       </div>
+
+      {/* Screenshot (exhibit page) shown on this slide */}
+      {(assets.length > 0 || slide.imageUrl) && (
+        <div className="mt-3 pt-3 border-t border-kp-border-soft flex items-start gap-4">
+          <div className="flex-1">
+            <label className="font-mono text-[11px] uppercase text-kp-text-faint block mb-1">
+              Screenshot on this slide
+            </label>
+            <select
+              value={slide.imageUrl ?? ""}
+              onChange={(e) => {
+                const url = e.target.value || null;
+                const asset = assets.find((a) => a.url === url);
+                onChange({
+                  ...slide,
+                  imageUrl: url,
+                  imageLabel: asset ? `${asset.name} — page ${asset.page}` : null,
+                });
+              }}
+              className="focus-kp w-full bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[13px]"
+            >
+              <option value="">None (text-only slide)</option>
+              {assets.map((a) => (
+                <option key={a.url} value={a.url}>
+                  {a.name} — page {a.page}
+                </option>
+              ))}
+            </select>
+          </div>
+          {slide.imageUrl && (
+            <a href={slide.imageUrl} target="_blank" rel="noreferrer" className="shrink-0">
+              <img
+                src={slide.imageUrl}
+                alt={slide.imageLabel ?? "Slide screenshot"}
+                className="h-24 rounded-lg border border-kp-border object-contain bg-white"
+              />
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }

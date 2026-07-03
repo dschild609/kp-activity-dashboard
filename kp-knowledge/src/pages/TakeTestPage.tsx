@@ -300,14 +300,32 @@ function SlideDeck({
             Slide {index + 1} / {slides.length}
           </span>
         </div>
-        <ul className="px-6 py-6 space-y-3 min-h-[220px]">
-          {slide.bullets.map((b, i) => (
-            <li key={i} className="flex gap-3 text-[15px] text-kp-text leading-relaxed">
-              <span className="text-kp-crimson font-bold mt-0.5">•</span>
-              {b}
-            </li>
-          ))}
-        </ul>
+        <div className="px-6 py-6 min-h-[220px]">
+          <ul className="space-y-3">
+            {slide.bullets.map((b, i) => (
+              <li key={i} className="flex gap-3 text-[15px] text-kp-text leading-relaxed">
+                <span className="text-kp-crimson font-bold mt-0.5">•</span>
+                {b}
+              </li>
+            ))}
+          </ul>
+          {slide.imageUrl && (
+            <figure className="mt-5">
+              <a href={slide.imageUrl} target="_blank" rel="noreferrer" title="Open full size">
+                <img
+                  src={slide.imageUrl}
+                  alt={slide.imageLabel ?? "Slide illustration"}
+                  className="w-full max-h-[420px] object-contain rounded-lg border border-kp-border bg-white"
+                />
+              </a>
+              {slide.imageLabel && (
+                <figcaption className="mt-1.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-kp-text-faint text-center">
+                  {slide.imageLabel} · click to enlarge
+                </figcaption>
+              )}
+            </figure>
+          )}
+        </div>
         <div className="h-1 bg-kp-surface-alt">
           <div
             className="h-full bg-kp-crimson transition-all"

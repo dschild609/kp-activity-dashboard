@@ -35,6 +35,7 @@ function testFromDoc(id: string, data: Record<string, unknown>): KnowledgeTest {
     aiGenerated: (data.aiGenerated as boolean) ?? false,
     sourceDocName: (data.sourceDocName as string) ?? null,
     slides: (data.slides as KnowledgeTest["slides"]) ?? [],
+    assets: (data.assets as KnowledgeTest["assets"]) ?? [],
     tags: (data.tags as string[]) ?? [],
     questionCount: (data.questionCount as number) ?? 0,
     createdBy: (data.createdBy as string) ?? "",

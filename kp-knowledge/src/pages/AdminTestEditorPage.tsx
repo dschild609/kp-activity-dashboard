@@ -20,7 +20,7 @@ import {
   updateQuestion,
   updateTest,
 } from "../lib/knowledge";
-import { uploadTestAssets } from "../lib/aiGenerate";
+import { snipTestAsset, uploadTestAssets } from "../lib/aiGenerate";
 import { renderExhibit } from "../lib/exhibitPages";
 
 /* Review-and-edit surface for a test — the approval gate for AI-generated
@@ -388,23 +388,23 @@ function SlideWorkbench({
   const index = Math.min(selected, Math.max(slides.length - 1, 0));
   const slide = slides[index];
 
-  async function handleSnip(jpegBase64: string) {
+  async function handleSnip(region: { x: number; y: number; w: number; h: number }) {
     if (!slide?.imageUrl) return;
     const sourceName =
       assets.find((a) => a.url === slide.imageUrl)?.name ?? slide.imageLabel ?? "image";
     const snipCount = assets.filter((a) => a.name.startsWith(`${sourceName} (snip`)).length;
-    const added = await uploadTestAssets(testId, {
-      name: `${sourceName} (snip ${snipCount + 1})`,
-      pages: [{ pageNumber: 1, imageBase64: jpegBase64 }],
-    });
-    onAssetsAdded(added);
-    if (added[0]) {
-      onChange(
-        slides.map((s, j) =>
-          j === index ? { ...s, imageUrl: added[0].url, imageLabel: added[0].name } : s
-        )
-      );
-    }
+    const asset = await snipTestAsset(
+      testId,
+      `${sourceName} (snip ${snipCount + 1})`,
+      slide.imageUrl,
+      region
+    );
+    onAssetsAdded([asset]);
+    onChange(
+      slides.map((s, j) =>
+        j === index ? { ...s, imageUrl: asset.url, imageLabel: asset.name } : s
+      )
+    );
     setSnipping(false);
   }
 

@@ -5,6 +5,8 @@ const GENERATE_URL =
   "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/generateKnowledgeTest";
 const UPLOAD_ASSET_URL =
   "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/uploadKnowledgeAsset";
+const SNIP_ASSET_URL =
+  "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/snipKnowledgeAsset";
 
 export interface GenerateResult {
   testId: string;
@@ -73,4 +75,31 @@ export async function uploadTestAssets(
     throw new Error(body.error ?? `Upload failed (HTTP ${resp.status})`);
   }
   return body.assets;
+}
+
+/* Crops a region (fractions 0-1) out of one of the test's asset images —
+ * server-side at native resolution — and returns the new asset. */
+export async function snipTestAsset(
+  testId: string,
+  name: string,
+  sourceUrl: string,
+  region: { x: number; y: number; w: number; h: number }
+): Promise<{ name: string; page: number; url: string }> {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+  const token = await user.getIdToken();
+
+  const resp = await fetch(SNIP_ASSET_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ testId, name, sourceUrl, region }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok || !body.ok) {
+    throw new Error(body.error ?? `Snip failed (HTTP ${resp.status})`);
+  }
+  return body.asset;
 }

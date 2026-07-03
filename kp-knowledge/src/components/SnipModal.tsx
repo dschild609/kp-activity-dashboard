@@ -18,8 +18,9 @@ export function SnipModal({
 }: {
   imageUrl: string;
   onCancel: () => void;
-  /* Receives the cropped JPEG (base64, no data: prefix) */
-  onConfirm: (jpegBase64: string) => Promise<void>;
+  /* Receives the selection as fractions of the image (0-1); the actual
+   * crop happens server-side at native resolution */
+  onConfirm: (region: { x: number; y: number; w: number; h: number }) => Promise<void>;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -44,28 +45,14 @@ export function SnipModal({
     setBusy(true);
     setError(null);
     try {
-      const scaleX = img.naturalWidth / img.clientWidth;
-      const scaleY = img.naturalHeight / img.clientHeight;
-      const sx = Math.round(rect.x * scaleX);
-      const sy = Math.round(rect.y * scaleY);
-      const sw = Math.max(1, Math.round(rect.w * scaleX));
-      const sh = Math.max(1, Math.round(rect.h * scaleY));
-      const canvas = document.createElement("canvas");
-      canvas.width = sw;
-      canvas.height = sh;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas not available");
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, sw, sh);
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
-      await onConfirm(dataUrl.slice(dataUrl.indexOf(",") + 1));
+      await onConfirm({
+        x: rect.x / img.clientWidth,
+        y: rect.y / img.clientHeight,
+        w: rect.w / img.clientWidth,
+        h: rect.h / img.clientHeight,
+      });
     } catch (e) {
-      setError(
-        (e as Error).name === "SecurityError"
-          ? "This image can't be snipped in the browser (cross-origin restriction)."
-          : (e as Error).message
-      );
+      setError((e as Error).message);
       setBusy(false);
     }
   }
@@ -132,7 +119,6 @@ export function SnipModal({
             <img
               ref={imgRef}
               src={imageUrl}
-              crossOrigin="anonymous"
               alt="Snip source"
               className="block max-h-[65vh] max-w-full"
               draggable={false}

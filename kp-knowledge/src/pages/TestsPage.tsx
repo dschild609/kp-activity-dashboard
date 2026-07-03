@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
-import { listAttempts, listTests } from "../lib/knowledge";
+import { attemptGate, listAttempts, listTests } from "../lib/knowledge";
 
 export function TestsPage() {
   const { user } = useOutletContext<AuthState>();
@@ -18,9 +18,13 @@ export function TestsPage() {
       .catch((e) => setError((e as Error).message));
   }, [user]);
 
-  const attemptByTest = useMemo(() => {
-    const map = new Map<string, KnowledgeAttempt>();
-    for (const a of attempts) if (!map.has(a.testId)) map.set(a.testId, a);
+  const attemptsByTest = useMemo(() => {
+    const map = new Map<string, KnowledgeAttempt[]>();
+    for (const a of attempts) {
+      const list = map.get(a.testId) ?? [];
+      list.push(a);
+      map.set(a.testId, list);
+    }
     return map;
   }, [attempts]);
 
@@ -71,7 +75,9 @@ export function TestsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         {visible.map((test) => {
-          const attempt = attemptByTest.get(test.id);
+          const testAttempts = attemptsByTest.get(test.id) ?? [];
+          const best = testAttempts.find((a) => a.passed) ?? testAttempts[0];
+          const gate = attemptGate(test, testAttempts);
           const passNeeded = Math.max(test.questionCount - test.maxWrongToPass, 0);
           return (
             <div
@@ -80,8 +86,8 @@ export function TestsPage() {
             >
               <div className="flex items-start justify-between gap-3 mb-2">
                 <h2 className="text-[16px] font-bold text-kp-text">{test.name}</h2>
-                {attempt ? (
-                  attempt.passed ? (
+                {best ? (
+                  best.passed ? (
                     <Pill tone="good">Passed</Pill>
                   ) : (
                     <Pill tone="bad">Failed</Pill>
@@ -96,23 +102,50 @@ export function TestsPage() {
               <div className="text-[12.5px] text-kp-text-faint mb-4">
                 {test.questionCount} questions · pass with {passNeeded} or more correct
               </div>
-              <div className="mt-auto">
-                {attempt ? (
+              <div className="mt-auto space-y-2.5">
+                {best && (
                   <div className="text-[13.5px] font-semibold text-kp-text-muted">
-                    Score: <span className="font-bold text-kp-text">{attempt.score}%</span>
-                    {attempt.submittedAt && (
+                    {best.passed ? "Score" : "Best so far"}:{" "}
+                    <span className="font-bold text-kp-text">
+                      {Math.max(...testAttempts.map((a) => a.score))}%
+                    </span>
+                    {best.submittedAt && (
                       <span className="text-kp-text-faint font-normal">
-                        {" "}· {attempt.submittedAt.toDate().toLocaleDateString()}
+                        {" "}· {best.submittedAt.toDate().toLocaleDateString()}
+                      </span>
+                    )}
+                    {testAttempts.length > 1 && (
+                      <span className="text-kp-text-faint font-normal">
+                        {" "}· {testAttempts.length} attempts
                       </span>
                     )}
                   </div>
-                ) : (
+                )}
+                {gate.canTake && (
                   <Link
                     to={`/tests/${test.id}`}
-                    className="inline-block px-4 py-2 bg-kp-navy hover:bg-kp-navy-hover text-white text-[13.5px] font-semibold rounded-lg transition-colors"
+                    className={`inline-block px-4 py-2 text-white text-[13.5px] font-semibold rounded-lg transition-colors ${
+                      best ? "bg-kp-crimson hover:bg-kp-crimson-hover" : "bg-kp-navy hover:bg-kp-navy-hover"
+                    }`}
                   >
-                    Start Test
+                    {best
+                      ? `Retake Test${
+                          test.retakePolicy === "limited"
+                            ? ` (${testAttempts.length} of ${test.maxAttempts} used)`
+                            : ""
+                        }`
+                      : "Start Test"}
                   </Link>
+                )}
+                {!gate.canTake && gate.reason === "out-of-attempts" && (
+                  <div className="text-[12.5px] text-kp-text-faint">
+                    All {test.maxAttempts} attempts used — ask your admin for another.
+                  </div>
+                )}
+                {!gate.canTake && gate.reason === "single-used" && !best?.passed && (
+                  <div className="text-[12.5px] text-kp-text-faint">
+                    One attempt allowed — ask your admin for a reset.
+                  </div>
                 )}
               </div>
             </div>

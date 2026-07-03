@@ -71,6 +71,12 @@ export interface KnowledgeAsset {
   url: string;
 }
 
+/* How many tries an employee gets:
+ * - single:    one attempt; admin resets for retakes (legacy behavior)
+ * - untilPass: retake freely until passed (training-first default)
+ * - limited:   up to maxAttempts tries, stops early once passed */
+export type RetakePolicy = "single" | "untilPass" | "limited";
+
 export interface KnowledgeTest {
   id: string;
   name: string;
@@ -78,6 +84,9 @@ export interface KnowledgeTest {
   /* Pass rule from the original certification app: pass when
    * wrongCount <= maxWrongToPass (e.g. 15 questions, 3 wrong allowed = 80%) */
   maxWrongToPass: number;
+  retakePolicy: RetakePolicy;
+  /* Only used when retakePolicy === "limited" */
+  maxAttempts: number;
   isActive: boolean;
   /* AI-generated tests start as "draft" (isActive false) until an admin
    * reviews and publishes; hand-made tests are "published" from creation */

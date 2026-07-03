@@ -7,6 +7,8 @@ const UPLOAD_ASSET_URL =
   "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/uploadKnowledgeAsset";
 const SNIP_ASSET_URL =
   "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/snipKnowledgeAsset";
+const EDIT_URL =
+  "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/editKnowledgeTest";
 
 export interface GenerateResult {
   testId: string;
@@ -75,6 +77,28 @@ export async function uploadTestAssets(
     throw new Error(body.error ?? `Upload failed (HTTP ${resp.status})`);
   }
   return body.assets;
+}
+
+/* Applies a natural-language edit to a SAVED test — Claude rewrites the
+ * affected slides/questions server-side and the caller reloads. Can take
+ * a minute or two on Opus. */
+export async function editTestWithAI(testId: string, instruction: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+  const token = await user.getIdToken();
+
+  const resp = await fetch(EDIT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ testId, instruction }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok || !body.ok) {
+    throw new Error(body.error ?? `Edit failed (HTTP ${resp.status})`);
+  }
 }
 
 /* Crops a region (fractions 0-1) out of one of the test's asset images —

@@ -456,6 +456,8 @@ export const generateKnowledgeTest = onRequest(
       name: generated.name,
       description: generated.description,
       maxWrongToPass: generated.maxWrongToPass,
+      retakePolicy: "untilPass",
+      maxAttempts: 3,
       isActive: false,
       status: "draft",
       aiGenerated: true,

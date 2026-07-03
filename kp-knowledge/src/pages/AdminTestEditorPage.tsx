@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import { canManageTests } from "../types/roles";
 import type {
   AnswerKey,
   KnowledgeAsset,
+  KnowledgeAttempt,
   KnowledgeQuestion,
   KnowledgeSlide,
   KnowledgeTest,
+  RetakePolicy,
   SlideKind,
 } from "../types/knowledge";
 import { SlideView, sectionNumberAt } from "../components/SlideView";
@@ -17,10 +19,11 @@ import {
   deleteQuestion,
   getQuestions,
   getTest,
+  listAttempts,
   updateQuestion,
   updateTest,
 } from "../lib/knowledge";
-import { snipTestAsset, uploadTestAssets } from "../lib/aiGenerate";
+import { editTestWithAI, snipTestAsset, uploadTestAssets } from "../lib/aiGenerate";
 import { renderExhibit } from "../lib/exhibitPages";
 
 /* Review-and-edit surface for a test — the approval gate for AI-generated
@@ -41,21 +44,48 @@ export function AdminTestEditorPage() {
   const [description, setDescription] = useState("");
   const [maxWrong, setMaxWrong] = useState(0);
   const [tags, setTags] = useState("");
+  const [retakePolicy, setRetakePolicy] = useState<RetakePolicy>("untilPass");
+  const [maxAttempts, setMaxAttempts] = useState(3);
   const [slides, setSlides] = useState<KnowledgeSlide[]>([]);
   const [assets, setAssets] = useState<KnowledgeAsset[]>([]);
+  const [attempts, setAttempts] = useState<KnowledgeAttempt[]>([]);
   const [dirty, setDirty] = useState(false);
+
+  /* Per-question stats from every recorded attempt: how often it was
+   * missed, and which options people picked (bad questions show up fast) */
+  const questionStats = useMemo(() => {
+    const map = new Map<string, { n: number; wrong: number; counts: Record<string, number> }>();
+    for (const a of attempts) {
+      for (const [qid, g] of Object.entries(a.answers ?? {})) {
+        const s = map.get(qid) ?? { n: 0, wrong: 0, counts: {} };
+        s.n += 1;
+        if (!g.isCorrect) s.wrong += 1;
+        const picked = g.given ?? "blank";
+        s.counts[picked] = (s.counts[picked] ?? 0) + 1;
+        map.set(qid, s);
+      }
+    }
+    return map;
+  }, [attempts]);
 
   const reload = useCallback(async () => {
     if (!testId) return;
     try {
-      const [t, qs] = await Promise.all([getTest(testId), getQuestions(testId)]);
+      const [t, qs, atts] = await Promise.all([
+        getTest(testId),
+        getQuestions(testId),
+        listAttempts({ testId }),
+      ]);
       if (!t) { setError("Test not found."); return; }
       setTest(t);
       setQuestions(qs);
+      setAttempts(atts);
       setName(t.name);
       setDescription(t.description);
       setMaxWrong(t.maxWrongToPass);
       setTags(t.tags.join(", "));
+      setRetakePolicy(t.retakePolicy);
+      setMaxAttempts(t.maxAttempts);
       setSlides(t.slides);
       setAssets(t.assets);
       setDirty(false);
@@ -88,16 +118,20 @@ export function AdminTestEditorPage() {
 
   const markDirty = () => setDirty(true);
 
+  const metaFields = () => ({
+    name,
+    description,
+    maxWrongToPass: maxWrong,
+    retakePolicy,
+    maxAttempts,
+    tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+    slides,
+  });
+
   async function saveMeta() {
     setSaving("meta");
     try {
-      await updateTest(testId!, {
-        name,
-        description,
-        maxWrongToPass: maxWrong,
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-        slides,
-      });
+      await updateTest(testId!, metaFields());
       await reload();
     } finally {
       setSaving(null);
@@ -108,13 +142,7 @@ export function AdminTestEditorPage() {
     setSaving("publish");
     try {
       if (dirty) {
-        await updateTest(testId!, {
-          name,
-          description,
-          maxWrongToPass: maxWrong,
-          tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-          slides,
-        });
+        await updateTest(testId!, metaFields());
       }
       await updateTest(testId!, { isActive: next, status: next ? "published" : "draft" });
       await reload();
@@ -147,9 +175,18 @@ export function AdminTestEditorPage() {
           <span className="text-[12px] text-kp-text-faint">from {test.sourceDocName}</span>
         )}
       </div>
-      <h1 className="text-[26px] font-extrabold tracking-[-0.02em] text-kp-navy mb-8">
-        {test.name}
-      </h1>
+      <div className="flex items-center justify-between gap-4 mb-8">
+        <h1 className="text-[26px] font-extrabold tracking-[-0.02em] text-kp-navy">
+          {test.name}
+        </h1>
+        <Link
+          to={`/admin/tests/${testId}/preview`}
+          className="shrink-0 px-4 py-2 text-[13.5px] font-semibold text-kp-text border border-kp-border rounded-lg hover:bg-kp-surface transition-colors"
+          title="Walk through the slides and quiz as an employee — nothing is recorded"
+        >
+          ▶ Preview as employee
+        </Link>
+      </div>
 
       {/* ── Metadata ── */}
       <section className="mb-10">
@@ -172,7 +209,39 @@ export function AdminTestEditorPage() {
             </label>
             <Field label="Tags (comma-separated)" value={tags} onChange={(v) => { setTags(v); markDirty(); }} />
           </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <label className="block">
+              <span className="font-mono text-[11px] uppercase text-kp-text-faint">Retakes</span>
+              <select
+                value={retakePolicy}
+                onChange={(e) => { setRetakePolicy(e.target.value as RetakePolicy); markDirty(); }}
+                className="focus-kp mt-1 w-full bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13.5px]"
+              >
+                <option value="untilPass">Retake until passed</option>
+                <option value="limited">Limited attempts</option>
+                <option value="single">Single attempt (admin resets)</option>
+              </select>
+            </label>
+            {retakePolicy === "limited" && (
+              <label className="block">
+                <span className="font-mono text-[11px] uppercase text-kp-text-faint">Max attempts</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={maxAttempts}
+                  onChange={(e) => { setMaxAttempts(Math.max(1, Number(e.target.value) || 1)); markDirty(); }}
+                  className="focus-kp mt-1 w-full bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13.5px]"
+                />
+              </label>
+            )}
+          </div>
         </div>
+      </section>
+
+      {/* ── AI Assistant ── */}
+      <section className="mb-10">
+        <h2 className="kp-kicker mb-4">AI Assistant</h2>
+        <AiAssistant testId={testId} dirty={dirty} onApplied={reload} />
       </section>
 
       {/* ── Slides ── */}
@@ -217,6 +286,7 @@ export function AdminTestEditorPage() {
               key={q.id}
               index={i}
               question={q}
+              stats={questionStats.get(q.id)}
               onSave={async (fields) => {
                 await updateQuestion(testId, q.id, fields);
                 await reload();
@@ -269,6 +339,82 @@ export function AdminTestEditorPage() {
 }
 
 /* ── Slide editor card ───────────────────────────────────────────── */
+
+/* Natural-language edits applied to the saved test via Claude — "simplify
+ * slide 4", "add a slide about overtime", "rewrite question 3". Requires a
+ * clean (saved) state so the assistant and the admin never edit different
+ * versions. */
+function AiAssistant({
+  testId,
+  dirty,
+  onApplied,
+}: {
+  testId: string;
+  dirty: boolean;
+  onApplied: () => Promise<void>;
+}) {
+  const [instruction, setInstruction] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [doneMsg, setDoneMsg] = useState<string | null>(null);
+
+  async function apply() {
+    if (busy || dirty || instruction.trim().length < 3) return;
+    setBusy(true);
+    setError(null);
+    setDoneMsg(null);
+    try {
+      await editTestWithAI(testId, instruction.trim());
+      await onApplied();
+      setDoneMsg(`Applied: "${instruction.trim()}" — review the changes below.`);
+      setInstruction("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
+      <div className="flex gap-3">
+        <input
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void apply(); }}
+          disabled={busy}
+          placeholder='e.g. "Simplify slide 4" · "Add a slide about overtime after slide 6" · "Rewrite question 3 so the answer is less obvious"'
+          className="focus-kp flex-1 bg-kp-surface border border-kp-border rounded-lg px-3 py-2 text-[13.5px] disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={() => void apply()}
+          disabled={busy || dirty || instruction.trim().length < 3}
+          className="px-4 py-2 bg-kp-violet hover:opacity-90 text-white text-[13.5px] font-semibold rounded-lg transition-opacity disabled:opacity-40"
+        >
+          {busy ? "Applying…" : "✨ Apply"}
+        </button>
+      </div>
+      <div className="mt-2 text-[12px] text-kp-text-faint">
+        {dirty
+          ? "Save your changes first — the assistant edits the saved version."
+          : busy
+            ? "Rewriting the test — this can take a minute…"
+            : "The assistant edits slides, questions, and settings; everything it changes shows up below for review before you publish."}
+      </div>
+      {error && (
+        <div className="mt-3 text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-3">
+          {error}
+        </div>
+      )}
+      {doneMsg && (
+        <div className="mt-3 text-[13px] text-kp-good bg-kp-good-bg border border-kp-good-border rounded-lg p-3">
+          {doneMsg}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* Layout options offered in the menus. The two screenshot variants share
  * kind "image" and differ by imagePosition. */
@@ -645,14 +791,35 @@ function SlideWorkbench({
 }
 /* ── Question editor card ────────────────────────────────────────── */
 
+function MissPill({ stats }: { stats?: { n: number; wrong: number } }) {
+  if (!stats || stats.n === 0) return null;
+  const pct = Math.round((stats.wrong / stats.n) * 100);
+  const tone =
+    pct >= 60
+      ? "text-kp-bad bg-kp-bad-bg border-kp-bad-border"
+      : pct >= 30
+        ? "text-kp-warn bg-kp-warn-bg border-kp-warn-border"
+        : "text-kp-good bg-kp-good-bg border-kp-good-border";
+  return (
+    <span
+      className={`shrink-0 px-1.5 py-0.5 text-[11px] font-bold rounded-[5px] border ${tone}`}
+      title={`${stats.wrong} of ${stats.n} attempts got this wrong`}
+    >
+      missed {pct}% · {stats.n} taken
+    </span>
+  );
+}
+
 function QuestionEditor({
   index,
   question,
+  stats,
   onSave,
   onDelete,
 }: {
   index: number;
   question: KnowledgeQuestion;
+  stats?: { n: number; wrong: number; counts: Record<string, number> };
   onSave: (fields: Partial<Omit<KnowledgeQuestion, "id">>) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
@@ -679,8 +846,18 @@ function QuestionEditor({
             {{ A: question.optionA, B: question.optionB, C: question.optionC, D: question.optionD }[
               question.correctAnswer
             ]}
+            {stats && stats.n > 0 && (
+              <span>
+                {" "}· picks:{" "}
+                {(["A", "B", "C", "D", "blank"] as const)
+                  .filter((k) => stats.counts[k])
+                  .map((k) => `${k} ${stats.counts[k]}`)
+                  .join(" · ")}
+              </span>
+            )}
           </div>
         </div>
+        <MissPill stats={stats} />
         <SmallButton onClick={() => setEditing(true)}>Edit</SmallButton>
         <SmallButton tone="danger" onClick={() => void onDelete()}>Delete</SmallButton>
       </div>

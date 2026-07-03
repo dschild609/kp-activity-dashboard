@@ -16,6 +16,7 @@ function App() {
           <Route path="results" element={<MyResultsPage />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="admin/tests/:testId" element={<AdminTestEditorPage />} />
+          <Route path="admin/tests/:testId/preview" element={<TakeTestPage preview />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

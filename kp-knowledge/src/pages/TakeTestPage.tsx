@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
+import { canManageTests } from "../types/roles";
 import type { AnswerKey, KnowledgeQuestion, KnowledgeTest } from "../types/knowledge";
 import {
+  attemptGate,
   getQuestions,
+  getTest,
   gradeAnswers,
   listAttempts,
   listTests,
@@ -12,17 +15,53 @@ import {
 } from "../lib/knowledge";
 import { SlideView, sectionNumberAt } from "../components/SlideView";
 
+/* Per-attempt shuffle: question order is randomized, and MC options are
+ * shown in random order with POSITIONAL display letters. Answers are
+ * stored/graded by the ORIGINAL option key, so shuffling never touches
+ * grading — it only stops answer keys from being shareable as "A, C, B…" */
+interface QuizOrder {
+  questions: KnowledgeQuestion[];
+  optionOrder: Record<string, AnswerKey[]>;
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildQuizOrder(questions: KnowledgeQuestion[]): QuizOrder {
+  const optionOrder: Record<string, AnswerKey[]> = {};
+  for (const q of questions) {
+    const keys: AnswerKey[] = ["A", "B"];
+    if (q.optionC) keys.push("C");
+    if (q.optionD) keys.push("D");
+    // True/False keeps its canonical order
+    optionOrder[q.id] = q.type === "TF" ? keys : shuffle(keys);
+  }
+  return { questions: shuffle(questions), optionOrder };
+}
+
+type Blocked = "passed" | "single-used" | "out-of-attempts";
+
 type PageState =
   | { phase: "loading" }
-  | { phase: "already-taken" }
+  | { phase: "blocked"; reason: Blocked; test: KnowledgeTest }
   | { phase: "error"; message: string }
-  | { phase: "slides"; test: KnowledgeTest; questions: KnowledgeQuestion[] }
-  | { phase: "taking"; test: KnowledgeTest; questions: KnowledgeQuestion[] }
-  | { phase: "done"; test: KnowledgeTest; questions: KnowledgeQuestion[]; result: GradeResult };
+  | { phase: "slides"; test: KnowledgeTest; quiz: QuizOrder; attemptNumber: number }
+  | { phase: "taking"; test: KnowledgeTest; quiz: QuizOrder; attemptNumber: number }
+  | { phase: "done"; test: KnowledgeTest; quiz: QuizOrder; result: GradeResult };
 
-export function TakeTestPage() {
+function slideProgressKey(uid: string, testId: string): string {
+  return `kpk-slides-${uid}-${testId}`;
+}
+
+export function TakeTestPage({ preview = false }: { preview?: boolean }) {
   const { testId } = useParams<{ testId: string }>();
-  const { user } = useOutletContext<AuthState>();
+  const { user, role } = useOutletContext<AuthState>();
   const navigate = useNavigate();
 
   const [state, setState] = useState<PageState>({ phase: "loading" });
@@ -33,43 +72,70 @@ export function TakeTestPage() {
     if (!testId || !user) return;
     (async () => {
       try {
+        if (preview) {
+          if (!canManageTests(role)) {
+            setState({ phase: "error", message: "Preview is admin-only." });
+            return;
+          }
+          const test = await getTest(testId);
+          if (!test) { setState({ phase: "error", message: "Test not found." }); return; }
+          const questions = await getQuestions(testId);
+          const quiz = buildQuizOrder(questions);
+          setState({
+            phase: test.slides.length > 0 ? "slides" : "taking",
+            test,
+            quiz,
+            attemptNumber: 1,
+          });
+          return;
+        }
+
         const [tests, attempts] = await Promise.all([
           listTests({ activeOnly: true }),
           listAttempts({ uid: user.uid, testId }),
         ]);
         const test = tests.find((t) => t.id === testId);
         if (!test) { setState({ phase: "error", message: "Test not found or inactive." }); return; }
-        if (attempts.length > 0) { setState({ phase: "already-taken" }); return; }
+        const gate = attemptGate(test, attempts);
+        if (!gate.canTake) {
+          setState({ phase: "blocked", reason: gate.reason!, test });
+          return;
+        }
         const questions = await getQuestions(testId);
+        const quiz = buildQuizOrder(questions);
         setState({
           phase: test.slides.length > 0 ? "slides" : "taking",
           test,
-          questions,
+          quiz,
+          attemptNumber: attempts.length + 1,
         });
       } catch (e) {
         setState({ phase: "error", message: (e as Error).message });
       }
     })();
-  }, [testId, user]);
+  }, [testId, user, preview, role]);
 
   const unanswered = useMemo(() => {
     if (state.phase !== "taking") return 0;
-    return state.questions.filter((q) => !answers[q.id]).length;
+    return state.quiz.questions.filter((q) => !answers[q.id]).length;
   }, [state, answers]);
 
   async function handleSubmit() {
     if (state.phase !== "taking" || !user || submitting) return;
     setSubmitting(true);
     try {
-      const result = gradeAnswers(state.questions, answers, state.test.maxWrongToPass);
-      await submitAttempt({
-        uid: user.uid,
-        userName: user.displayName ?? user.email ?? "Unknown",
-        userEmail: user.email ?? "",
-        test: state.test,
-        result,
-      });
-      setState({ phase: "done", test: state.test, questions: state.questions, result });
+      const result = gradeAnswers(state.quiz.questions, answers, state.test.maxWrongToPass);
+      if (!preview) {
+        await submitAttempt({
+          uid: user.uid,
+          userName: user.displayName ?? user.email ?? "Unknown",
+          userEmail: user.email ?? "",
+          test: state.test,
+          result,
+        });
+        localStorage.removeItem(slideProgressKey(user.uid, state.test.id));
+      }
+      setState({ phase: "done", test: state.test, quiz: state.quiz, result });
       window.scrollTo({ top: 0 });
     } catch (e) {
       setState({ phase: "error", message: `Submission failed: ${(e as Error).message}` });
@@ -89,14 +155,26 @@ export function TakeTestPage() {
       </Centered>
     );
   }
-  if (state.phase === "already-taken") {
+  if (state.phase === "blocked") {
+    const copy: Record<Blocked, { title: string; body: string }> = {
+      passed: {
+        title: "Already passed ✓",
+        body: "You've passed this test — nothing more to do here.",
+      },
+      "single-used": {
+        title: "Already completed",
+        body: "This test allows one attempt. Ask your admin to reset it if you need a retake.",
+      },
+      "out-of-attempts": {
+        title: "No attempts left",
+        body: `You've used all ${state.test.maxAttempts} attempts. Ask your admin if you need another try.`,
+      },
+    };
+    const c = copy[state.reason];
     return (
       <Centered>
-        <div className="text-[15px] font-bold text-kp-text mb-1">Already completed</div>
-        <div className="text-kp-text-muted mb-4">
-          You've already taken this test. Ask your admin to reset your attempt if you
-          need a retake.
-        </div>
+        <div className="text-[15px] font-bold text-kp-text mb-1">{c.title}</div>
+        <div className="text-kp-text-muted mb-4">{c.body}</div>
         <BackLink />
       </Centered>
     );
@@ -106,20 +184,23 @@ export function TakeTestPage() {
     return (
       <SlideDeck
         test={state.test}
+        preview={preview}
+        progressKey={!preview && user ? slideProgressKey(user.uid, state.test.id) : null}
         onStartQuiz={() => {
-          setState({ phase: "taking", test: state.test, questions: state.questions });
+          setState({ ...state, phase: "taking" });
           window.scrollTo({ top: 0 });
         }}
-        onCancel={() => navigate("/")}
+        onCancel={() => navigate(preview ? `/admin/tests/${testId}` : "/")}
       />
     );
   }
 
-  const { test, questions } = state;
+  const { test, quiz } = state;
   const result = state.phase === "done" ? state.result : null;
 
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      {preview && <PreviewBanner testId={test.id} />}
       <div className="mb-6">
         <h1 className="text-[26px] font-extrabold tracking-[-0.02em] text-kp-navy mb-1">
           {test.name}
@@ -128,7 +209,13 @@ export function TakeTestPage() {
           <p className="text-[14px] text-kp-text-muted">{test.description}</p>
         )}
         <div className="text-[12.5px] text-kp-text-faint mt-1">
-          {questions.length} questions · up to {test.maxWrongToPass} wrong to pass
+          {quiz.questions.length} questions · up to {test.maxWrongToPass} wrong to pass
+          {!preview && state.phase === "taking" && state.attemptNumber > 1 && (
+            <>
+              {" "}· attempt {state.attemptNumber}
+              {test.retakePolicy === "limited" ? ` of ${test.maxAttempts}` : ""}
+            </>
+          )}
         </div>
       </div>
 
@@ -142,20 +229,27 @@ export function TakeTestPage() {
         >
           <div className={`text-[18px] font-extrabold mb-1 ${result.passed ? "text-kp-good" : "text-kp-bad"}`}>
             {result.passed ? "✓ Passed" : "✗ Not passed"}
+            {preview && <span className="font-semibold text-[13px]"> (preview — not saved)</span>}
           </div>
           <div className="text-[14px] text-kp-text">
             Score <strong>{result.score}%</strong> — {result.correctCount} of {result.totalCount} correct
             ({result.wrongCount} wrong, {test.maxWrongToPass} allowed).
           </div>
+          {!preview && !result.passed && test.retakePolicy !== "single" && (
+            <div className="text-[13px] text-kp-text-muted mt-1.5">
+              You can review the material and retake the test from the Tests page.
+            </div>
+          )}
         </div>
       )}
 
       <div className="space-y-4">
-        {questions.map((q, i) => (
+        {quiz.questions.map((q, i) => (
           <QuestionCard
             key={q.id}
             index={i}
             question={q}
+            optionOrder={quiz.optionOrder[q.id]}
             given={answers[q.id] ?? null}
             graded={result ? result.graded[q.id] : null}
             onAnswer={(key) => setAnswers((prev) => ({ ...prev, [q.id]: key }))}
@@ -166,10 +260,10 @@ export function TakeTestPage() {
       <div className="mt-8 flex items-center gap-4">
         {result ? (
           <Link
-            to="/"
+            to={preview ? `/admin/tests/${test.id}` : "/"}
             className="px-5 py-2.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[14px] font-semibold rounded-lg transition-colors"
           >
-            Back to Tests
+            {preview ? "Back to Editor" : "Back to Tests"}
           </Link>
         ) : (
           <>
@@ -188,10 +282,10 @@ export function TakeTestPage() {
             )}
             <button
               type="button"
-              onClick={() => navigate("/")}
+              onClick={() => navigate(preview ? `/admin/tests/${test.id}` : "/")}
               className="ml-auto px-4 py-2.5 text-[13.5px] font-semibold text-kp-text-muted hover:text-kp-navy border border-kp-border rounded-lg hover:bg-kp-surface transition-colors"
             >
-              Cancel
+              {preview ? "Exit Preview" : "Cancel"}
             </button>
           </>
         )}
@@ -200,25 +294,45 @@ export function TakeTestPage() {
   );
 }
 
+function PreviewBanner({ testId }: { testId: string }) {
+  return (
+    <div className="mb-5 flex items-center gap-3 text-[13px] font-semibold text-kp-violet bg-kp-crimson-soft border border-kp-border rounded-lg px-4 py-2.5">
+      <span className="font-mono text-[10.5px] font-extrabold tracking-[0.06em] uppercase bg-kp-violet text-white px-1.5 py-0.5 rounded-[5px]">
+        Preview
+      </span>
+      You're seeing this as an employee would — attempts aren't recorded.
+      <Link to={`/admin/tests/${testId}`} className="ml-auto underline shrink-0">
+        Back to editor
+      </Link>
+    </div>
+  );
+}
+
 function QuestionCard({
   index,
   question,
+  optionOrder,
   given,
   graded,
   onAnswer,
 }: {
   index: number;
   question: KnowledgeQuestion;
+  optionOrder: AnswerKey[];
   given: AnswerKey | null;
   graded: { given: AnswerKey | null; correct: AnswerKey; isCorrect: boolean } | null;
   onAnswer: (key: AnswerKey) => void;
 }) {
-  const options: Array<{ key: AnswerKey; label: string }> = [
-    { key: "A" as const, label: question.optionA },
-    { key: "B" as const, label: question.optionB },
-    ...(question.optionC ? [{ key: "C" as const, label: question.optionC }] : []),
-    ...(question.optionD ? [{ key: "D" as const, label: question.optionD }] : []),
-  ];
+  const labelFor: Record<AnswerKey, string | null> = {
+    A: question.optionA,
+    B: question.optionB,
+    C: question.optionC,
+    D: question.optionD,
+  };
+  // Options in display order; the letter shown is positional, the key is original
+  const options = optionOrder
+    .filter((k) => labelFor[k])
+    .map((k, pos) => ({ key: k, label: labelFor[k]!, displayLetter: "ABCD"[pos] }));
 
   const railClass = graded
     ? graded.isCorrect
@@ -257,7 +371,9 @@ function QuestionCard({
                 disabled={!!graded}
                 className="accent-[#94002a]"
               />
-              <span className="font-mono text-[11px] font-bold text-kp-text-faint">{opt.key}</span>
+              <span className="font-mono text-[11px] font-bold text-kp-text-faint">
+                {opt.displayLetter}
+              </span>
               {opt.label}
             </label>
           );
@@ -267,30 +383,49 @@ function QuestionCard({
   );
 }
 
-/* Training slides shown before the quiz — one KP-branded card per slide,
- * chrome header band, crimson progress, Back/Next navigation. */
+/* Training slides shown before the quiz. Progress persists per user (via
+ * progressKey) so an interrupted session resumes on the same slide; the
+ * quiz only unlocks from the last slide. Preview mode adds skip-ahead. */
 function SlideDeck({
   test,
+  preview,
+  progressKey,
   onStartQuiz,
   onCancel,
 }: {
   test: KnowledgeTest;
+  preview: boolean;
+  progressKey: string | null;
   onStartQuiz: () => void;
   onCancel: () => void;
 }) {
-  const [index, setIndex] = useState(0);
   const slides = test.slides;
+  const [index, setIndex] = useState(() => {
+    if (!progressKey) return 0;
+    const saved = Number(localStorage.getItem(progressKey) ?? 0);
+    return Number.isInteger(saved) ? Math.max(0, Math.min(saved, slides.length - 1)) : 0;
+  });
+  const [resumed] = useState(index > 0);
+
+  useEffect(() => {
+    if (progressKey) localStorage.setItem(progressKey, String(index));
+  }, [index, progressKey]);
+
   const slide = slides[index];
   const last = index === slides.length - 1;
 
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      {preview && <PreviewBanner testId={test.id} />}
       <div className="mb-5">
         <h1 className="text-[24px] font-extrabold tracking-[-0.02em] text-kp-navy mb-1">
           {test.name}
         </h1>
         <p className="text-[13.5px] text-kp-text-muted">
-          Review the material below — the quiz comes after the last slide.
+          Review the material below — the quiz unlocks after the last slide.
+          {resumed && !preview && (
+            <span className="text-kp-crimson font-semibold"> Resuming where you left off.</span>
+          )}
         </p>
       </div>
 
@@ -298,6 +433,15 @@ function SlideDeck({
         <span className="font-mono text-[11px] font-bold tracking-[0.08em] uppercase text-kp-text-faint">
           Slide {index + 1} / {slides.length}
         </span>
+        {preview && !last && (
+          <button
+            type="button"
+            onClick={onStartQuiz}
+            className="text-[12px] font-semibold text-kp-violet hover:underline"
+          >
+            Skip to quiz (preview) →
+          </button>
+        )}
       </div>
       <SlideView slide={slide} sectionNumber={sectionNumberAt(slides, index)} />
       <div className="h-1 bg-kp-surface-alt rounded-full mt-3 overflow-hidden">
@@ -338,7 +482,7 @@ function SlideDeck({
           onClick={onCancel}
           className="ml-auto px-4 py-2.5 text-[13.5px] font-semibold text-kp-text-muted hover:text-kp-navy border border-kp-border rounded-lg hover:bg-kp-surface transition-colors"
         >
-          Exit
+          {preview ? "Exit Preview" : "Exit"}
         </button>
       </div>
     </main>

@@ -31,6 +31,8 @@ function testFromDoc(id: string, data: Record<string, unknown>): KnowledgeTest {
     name: (data.name as string) ?? "",
     description: (data.description as string) ?? "",
     maxWrongToPass: (data.maxWrongToPass as number) ?? 0,
+    retakePolicy: (data.retakePolicy as KnowledgeTest["retakePolicy"]) ?? "single",
+    maxAttempts: (data.maxAttempts as number) ?? 3,
     isActive: (data.isActive as boolean) ?? false,
     status: (data.status as KnowledgeTest["status"]) ?? "published",
     aiGenerated: (data.aiGenerated as boolean) ?? false,
@@ -157,6 +159,8 @@ export async function createTest(args: {
     name: args.name,
     description: args.description,
     maxWrongToPass: args.maxWrongToPass,
+    retakePolicy: "untilPass",
+    maxAttempts: 3,
     isActive: true,
     tags: args.tags,
     questionCount: args.questions.length,
@@ -178,11 +182,38 @@ export async function updateTest(
   fields: Partial<
     Pick<
       KnowledgeTest,
-      "name" | "description" | "maxWrongToPass" | "isActive" | "tags" | "slides" | "status"
+      | "name"
+      | "description"
+      | "maxWrongToPass"
+      | "retakePolicy"
+      | "maxAttempts"
+      | "isActive"
+      | "tags"
+      | "slides"
+      | "status"
     >
   >
 ): Promise<void> {
   await updateDoc(doc(db, TESTS, testId), fields);
+}
+
+/* What the retake policy allows for a user's attempt history */
+export function attemptGate(
+  test: Pick<KnowledgeTest, "retakePolicy" | "maxAttempts">,
+  attempts: KnowledgeAttempt[]
+): { canTake: boolean; reason: "passed" | "single-used" | "out-of-attempts" | null } {
+  if (attempts.some((a) => a.passed)) return { canTake: false, reason: "passed" };
+  if (attempts.length === 0) return { canTake: true, reason: null };
+  switch (test.retakePolicy) {
+    case "single":
+      return { canTake: false, reason: "single-used" };
+    case "untilPass":
+      return { canTake: true, reason: null };
+    case "limited":
+      return attempts.length < test.maxAttempts
+        ? { canTake: true, reason: null }
+        : { canTake: false, reason: "out-of-attempts" };
+  }
 }
 
 export async function addQuestion(testId: string, q: NewQuestion): Promise<void> {

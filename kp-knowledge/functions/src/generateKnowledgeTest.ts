@@ -91,20 +91,72 @@ const TEST_SCHEMA = {
     },
     slides: {
       type: "array",
-      description: "Training slides covering the document's substantive content, in teaching order",
+      description: "Training slides in KP Training Template layouts, in teaching order",
       items: {
         type: "object" as const,
         properties: {
-          title: { type: "string", description: "Slide heading, a few words" },
-          bullets: {
-            type: "array",
+          kind: {
+            type: "string",
+            enum: ["title", "section", "agenda", "bullets", "steps", "image"],
+            description: "Which template layout this slide uses",
+          },
+          kicker: {
+            type: ["string", "null"],
+            description: "Small uppercase label above the title (e.g. 'GETTING STARTED'); null on none",
+          },
+          title: { type: "string", description: "Slide heading" },
+          subtitle: {
+            type: ["string", "null"],
+            description: "Supporting sentence — title/section slides only, null otherwise",
+          },
+          items: {
+            type: ["array", "null"],
             items: { type: "string" },
-            description: "3-6 concise plain-language bullet points",
+            description: "Agenda rows (3-6) — agenda slides only, null otherwise",
+          },
+          columns: {
+            type: ["array", "null"],
+            description: "1-2 columns of headed bullet lists — bullets slides only, null otherwise",
+            items: {
+              type: "object" as const,
+              properties: {
+                heading: { type: "string", description: "Column card heading" },
+                bullets: {
+                  type: "array",
+                  items: { type: "string" },
+                  description:
+                    "3-6 concise bullets; use 'Lead — description' to bold a lead-in term",
+                },
+              },
+              required: ["heading", "bullets"],
+              additionalProperties: false,
+            },
+          },
+          steps: {
+            type: ["array", "null"],
+            description: "2-4 sequential process steps — steps slides only, null otherwise",
+            items: {
+              type: "object" as const,
+              properties: {
+                title: { type: "string" },
+                description: { type: "string", description: "One or two short sentences" },
+              },
+              required: ["title", "description"],
+              additionalProperties: false,
+            },
+          },
+          body: {
+            type: ["string", "null"],
+            description: "Short paragraph next to the screenshot — image slides only, null otherwise",
+          },
+          note: {
+            type: ["string", "null"],
+            description: "Optional callout note under the body — image slides only",
           },
           image: {
             type: ["object", "null"],
             description:
-              "Exhibit page to display as a screenshot on this slide (1-based numbers matching the exhibits provided), or null for no image",
+              "Exhibit page displayed on this slide (1-based numbers matching the exhibits provided) — image slides only, null otherwise",
             properties: {
               exhibit: { type: "integer", description: "1-based exhibit number" },
               page: { type: "integer", description: "1-based page within that exhibit" },
@@ -113,7 +165,9 @@ const TEST_SCHEMA = {
             additionalProperties: false,
           },
         },
-        required: ["title", "bullets", "image"],
+        required: [
+          "kind", "kicker", "title", "subtitle", "items", "columns", "steps", "body", "note", "image",
+        ],
         additionalProperties: false,
       },
     },
@@ -140,15 +194,24 @@ const TEST_SCHEMA = {
   additionalProperties: false,
 };
 
-const SYSTEM_PROMPT = `You create internal training material for KP Staffing, a light-industrial staffing company. Given a source document (and possibly exhibit files such as blank forms), you produce:
+const SYSTEM_PROMPT = `You create internal training material for KP Staffing, a light-industrial staffing company. Given a source document (and possibly exhibit files such as blank forms), you produce a slide deck in the KP Training Template layouts, plus a quiz.
 
-1. A slide deck that teaches the document's content to staff. Cover ALL substantive content — policies, procedures, rules, numbers, deadlines — in teaching order. Each slide has a short title and 3-6 concise bullets in plain language a busy employee can absorb. Typically 6-15 slides depending on the document's length. Don't pad: no title slide, no "questions?" slide, no bullet that just restates the slide title.
+THE SLIDE DECK teaches the document's content to staff. Cover ALL substantive content — policies, procedures, rules, numbers, deadlines — in teaching order, in plain language a busy employee can absorb. Typically 8-18 slides depending on the document's length. Six layouts are available; pick per slide by what the content needs:
 
-2. Exhibit screenshots: when exhibits are provided (e.g. a blank W-4 form), use them. Set a slide's "image" to the exhibit page that the slide is discussing — for example, a slide walking through Step 2 of a form should display the form page containing Step 2, and a slide about a worked example should show that page. Use images on the slides where seeing the real form genuinely helps; leave "image" null on slides where it wouldn't. Don't force every page onto a slide, and don't repeat the same page on many slides.
+- "title": the cover. Exactly ONE, always the FIRST slide. kicker = the training series or topic in a few words (e.g. "NEW HIRE TRAINING"); title = the deck's name; subtitle = one welcoming sentence about what the training covers.
+- "agenda": the second slide. items = 3-6 rows summarizing what the training covers, in order. kicker "AGENDA", title like "What to Expect".
+- "section": a divider that opens each major section of a longer deck. kicker = "SECTION ONE", "SECTION TWO", ... in sequence; title = the section name; subtitle = one sentence on what the section covers. Use sections only when the material has 2+ genuinely distinct parts; skip them for short single-topic decks.
+- "bullets": the workhorse content slide. columns = 1 column normally; 2 columns when the content pairs naturally (do/don't, what you'll do/who to ask, requirements/exceptions). Each column has a heading and 3-6 bullets. Write bullets as "Lead — description" when there's a natural lead-in term (it renders bold). No column heading repetition of the slide title.
+- "steps": a numbered process with 2-4 sequential steps (apply → orientation → assignment → check-in). Each step: short title + one-two sentence description. Use for any procedure with a clear order.
+- "image": a screenshot slide — the exhibit page fills the left half; kicker/title on the right with a short body paragraph explaining what the viewer is looking at, and optionally a note (a short callout, e.g. a common mistake or where to sign). ONLY image slides carry an "image" reference.
 
-3. A quiz of 10-15 questions (fewer only if the document is genuinely thin) that tests understanding of the slide content. Mix multiple-choice (MC, 3-4 options) and true/false (TF) questions. Every answer must be verifiable from the slides. Wrong options should be plausible — the kinds of mistakes someone who skimmed would make — never joke answers. TF questions use optionA "True" and optionB "False" with optionC/optionD null. Spread questions across the whole document, not just the start.
+Layout discipline: every slide sets exactly the fields its kind needs and null for the rest. Don't pad the deck — no "questions?" slide, no closing slide, no bullet that restates the slide title.
 
-4. maxWrongToPass: about 20% of the question count, rounded down (e.g. 12 questions → 2).
+EXHIBIT SCREENSHOTS: when exhibits are provided (e.g. a blank W-4 form), use "image" slides to walk through them. A slide discussing Step 2 of a form should show the page containing Step 2. Place image slides at the point in the teaching order where the form section comes up. Don't force every page onto a slide, and don't repeat the same page on many slides.
+
+THE QUIZ: 10-15 questions (fewer only if the document is genuinely thin) testing understanding of the slide content. Mix multiple-choice (MC, 3-4 options) and true/false (TF). Every answer must be verifiable from the slides. Wrong options should be plausible — the kinds of mistakes someone who skimmed would make — never joke answers. TF questions use optionA "True" and optionB "False" with optionC/optionD null. Spread questions across the whole document, not just the start.
+
+maxWrongToPass: about 20% of the question count, rounded down (e.g. 12 questions → 2).
 
 Base everything strictly on the provided material. Do not invent policies, numbers, or rules that aren't in it. If the document references a person by name for a process step, keep the role, not the personal name (say "your admin" or the role title).`;
 
@@ -298,15 +361,23 @@ export const generateKnowledgeTest = onRequest(
 
     // Generate slides + quiz with Claude
     const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+    interface GeneratedSlide {
+      kind: "title" | "section" | "agenda" | "bullets" | "steps" | "image";
+      kicker: string | null;
+      title: string;
+      subtitle: string | null;
+      items: string[] | null;
+      columns: Array<{ heading: string; bullets: string[] }> | null;
+      steps: Array<{ title: string; description: string }> | null;
+      body: string | null;
+      note: string | null;
+      image: { exhibit: number; page: number } | null;
+    }
     let generated: {
       name: string;
       description: string;
       maxWrongToPass: number;
-      slides: Array<{
-        title: string;
-        bullets: string[];
-        image: { exhibit: number; page: number } | null;
-      }>;
+      slides: GeneratedSlide[];
       questions: Array<{
         text: string;
         type: "MC" | "TF";
@@ -357,7 +428,19 @@ export const generateKnowledgeTest = onRequest(
           imageLabel = `${ex.name} — page ${s.image.page}`;
         }
       }
-      return { title: s.title, bullets: s.bullets, imageUrl, imageLabel };
+      return {
+        kind: s.kind,
+        kicker: s.kicker ?? null,
+        title: s.title,
+        subtitle: s.subtitle ?? null,
+        items: s.items ?? null,
+        columns: s.columns ?? null,
+        steps: s.steps ?? null,
+        body: s.body ?? null,
+        note: s.note ?? null,
+        imageUrl,
+        imageLabel,
+      };
     });
 
     // Save as a DRAFT test (invisible to employees until published)

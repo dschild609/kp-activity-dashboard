@@ -10,6 +10,7 @@ import {
   submitAttempt,
   type GradeResult,
 } from "../lib/knowledge";
+import { SlideView, sectionNumberAt } from "../components/SlideView";
 
 type PageState =
   | { phase: "loading" }
@@ -284,8 +285,8 @@ function SlideDeck({
 
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-[26px] font-extrabold tracking-[-0.02em] text-kp-navy mb-1">
+      <div className="mb-5">
+        <h1 className="text-[24px] font-extrabold tracking-[-0.02em] text-kp-navy mb-1">
           {test.name}
         </h1>
         <p className="text-[13.5px] text-kp-text-muted">
@@ -293,45 +294,17 @@ function SlideDeck({
         </p>
       </div>
 
-      <div className="bg-kp-surface rounded-xl border border-kp-border shadow-2xs overflow-hidden">
-        <div className="bg-kp-chrome border-l-4 border-kp-crimson px-5 py-3.5 flex items-center justify-between">
-          <span className="text-white text-[16px] font-bold">{slide.title}</span>
-          <span className="font-mono text-[11px] font-bold tracking-[0.08em] uppercase text-white/50">
-            Slide {index + 1} / {slides.length}
-          </span>
-        </div>
-        <div className="px-6 py-6 min-h-[220px]">
-          <ul className="space-y-3">
-            {slide.bullets.map((b, i) => (
-              <li key={i} className="flex gap-3 text-[15px] text-kp-text leading-relaxed">
-                <span className="text-kp-crimson font-bold mt-0.5">•</span>
-                {b}
-              </li>
-            ))}
-          </ul>
-          {slide.imageUrl && (
-            <figure className="mt-5">
-              <a href={slide.imageUrl} target="_blank" rel="noreferrer" title="Open full size">
-                <img
-                  src={slide.imageUrl}
-                  alt={slide.imageLabel ?? "Slide illustration"}
-                  className="w-full max-h-[420px] object-contain rounded-lg border border-kp-border bg-white"
-                />
-              </a>
-              {slide.imageLabel && (
-                <figcaption className="mt-1.5 font-mono text-[10.5px] uppercase tracking-[0.06em] text-kp-text-faint text-center">
-                  {slide.imageLabel} · click to enlarge
-                </figcaption>
-              )}
-            </figure>
-          )}
-        </div>
-        <div className="h-1 bg-kp-surface-alt">
-          <div
-            className="h-full bg-kp-crimson transition-all"
-            style={{ width: `${((index + 1) / slides.length) * 100}%` }}
-          />
-        </div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-mono text-[11px] font-bold tracking-[0.08em] uppercase text-kp-text-faint">
+          Slide {index + 1} / {slides.length}
+        </span>
+      </div>
+      <SlideView slide={slide} sectionNumber={sectionNumberAt(slides, index)} />
+      <div className="h-1 bg-kp-surface-alt rounded-full mt-3 overflow-hidden">
+        <div
+          className="h-full bg-kp-crimson transition-all"
+          style={{ width: `${((index + 1) / slides.length) * 100}%` }}
+        />
       </div>
 
       <div className="mt-6 flex items-center gap-3">

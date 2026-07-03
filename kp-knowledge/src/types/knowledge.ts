@@ -3,13 +3,60 @@ import type { Timestamp } from "firebase/firestore";
 export type QuestionType = "MC" | "TF";
 export type AnswerKey = "A" | "B" | "C" | "D";
 
-export interface KnowledgeSlide {
-  title: string;
+/* Slide layouts from the "KP Training Template" deck:
+ * - title:   dark ink cover — kicker, big title, subtitle, footer
+ * - section: crimson divider — kicker ("SECTION TWO"), title, subtitle, giant number
+ * - agenda:  numbered list rows on cream
+ * - bullets: 1-2 white cards with headed dash-bullet lists (the workhorse)
+ * - steps:   horizontal numbered process circles
+ * - image:   split layout — exhibit screenshot left, kicker/title/body right */
+export type SlideKind = "title" | "section" | "agenda" | "bullets" | "steps" | "image";
+
+export interface SlideColumn {
+  heading: string;
+  /* "Lead — rest" bullets render the lead bold (template convention) */
   bullets: string[];
+}
+
+export interface SlideStep {
+  title: string;
+  description: string;
+}
+
+export interface KnowledgeSlide {
+  kind: SlideKind;
+  /* Small uppercase label above the title (e.g. "GETTING STARTED") */
+  kicker: string | null;
+  title: string;
+  subtitle: string | null; // title / section / image slides
+  items: string[] | null; // agenda rows
+  columns: SlideColumn[] | null; // bullets slides (1-2 columns)
+  steps: SlideStep[] | null; // steps slides (2-4)
+  body: string | null; // image-slide paragraph
+  note: string | null; // image-slide side note (crimson-bar callout)
   /* Screenshot shown on the slide (e.g. a blank W-4 page) — a Storage URL
-   * from the test's assets; null/absent = text-only slide */
+   * from the test's assets */
   imageUrl?: string | null;
   imageLabel?: string | null;
+}
+
+/* Older tests stored slides as {title, bullets: string[]} — normalize to a
+ * single-column bullets slide so everything downstream sees one shape. */
+export function normalizeSlide(raw: Record<string, unknown>): KnowledgeSlide {
+  if (typeof raw.kind === "string") return raw as unknown as KnowledgeSlide;
+  return {
+    kind: "bullets",
+    kicker: null,
+    title: (raw.title as string) ?? "",
+    subtitle: null,
+    items: null,
+    columns: [{ heading: "", bullets: (raw.bullets as string[]) ?? [] }],
+    steps: null,
+    body: null,
+    note: null,
+    imageUrl: (raw.imageUrl as string | null) ?? null,
+    imageLabel: (raw.imageLabel as string | null) ?? null,
+  };
 }
 
 /* Stored exhibit page image (uploaded at AI-generation time) that slides

@@ -13,12 +13,13 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type {
-  AnswerKey,
-  GradedAnswer,
-  KnowledgeAttempt,
-  KnowledgeQuestion,
-  KnowledgeTest,
+import {
+  normalizeSlide,
+  type AnswerKey,
+  type GradedAnswer,
+  type KnowledgeAttempt,
+  type KnowledgeQuestion,
+  type KnowledgeTest,
 } from "../types/knowledge";
 
 const TESTS = "knowledgeTests";
@@ -34,7 +35,7 @@ function testFromDoc(id: string, data: Record<string, unknown>): KnowledgeTest {
     status: (data.status as KnowledgeTest["status"]) ?? "published",
     aiGenerated: (data.aiGenerated as boolean) ?? false,
     sourceDocName: (data.sourceDocName as string) ?? null,
-    slides: (data.slides as KnowledgeTest["slides"]) ?? [],
+    slides: ((data.slides as Array<Record<string, unknown>>) ?? []).map(normalizeSlide),
     assets: (data.assets as KnowledgeTest["assets"]) ?? [],
     tags: (data.tags as string[]) ?? [],
     questionCount: (data.questionCount as number) ?? 0,

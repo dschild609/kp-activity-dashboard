@@ -8,7 +8,9 @@ import type {
   KnowledgeQuestion,
   KnowledgeSlide,
   KnowledgeTest,
+  SlideKind,
 } from "../types/knowledge";
+import { SlideView, sectionNumberAt } from "../components/SlideView";
 import {
   addQuestion,
   deleteQuestion,
@@ -171,11 +173,21 @@ export function AdminTestEditorPage() {
       <section className="mb-10">
         <div className="flex items-center justify-between mb-4">
           <h2 className="kp-kicker">Slides ({slides.length})</h2>
-          <SmallButton
-            onClick={() => { setSlides([...slides, { title: "New slide", bullets: [""] }]); markDirty(); }}
+          <select
+            value=""
+            onChange={(e) => {
+              const kind = e.target.value as SlideKind;
+              if (!kind) return;
+              setSlides([...slides, newSlide(kind)]);
+              markDirty();
+            }}
+            className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold text-kp-text-muted"
           >
-            + Add slide
-          </SmallButton>
+            <option value="">+ Add slide…</option>
+            {SLIDE_KINDS.map((k) => (
+              <option key={k.kind} value={k.kind}>{k.label}</option>
+            ))}
+          </select>
         </div>
         {slides.length === 0 && (
           <div className="text-[13.5px] text-kp-text-muted bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
@@ -189,6 +201,7 @@ export function AdminTestEditorPage() {
               index={i}
               total={slides.length}
               slide={slide}
+              sectionNumber={sectionNumberAt(slides, i)}
               assets={test.assets}
               onChange={(next) => {
                 setSlides(slides.map((s, j) => (j === i ? next : s)));
@@ -291,10 +304,36 @@ export function AdminTestEditorPage() {
 
 /* ── Slide editor card ───────────────────────────────────────────── */
 
+const SLIDE_KINDS: Array<{ kind: SlideKind; label: string }> = [
+  { kind: "title", label: "Title (cover)" },
+  { kind: "section", label: "Section divider" },
+  { kind: "agenda", label: "Agenda (numbered list)" },
+  { kind: "bullets", label: "Bullets (1-2 columns)" },
+  { kind: "steps", label: "Process steps" },
+  { kind: "image", label: "Screenshot slide" },
+];
+
+function newSlide(kind: SlideKind): KnowledgeSlide {
+  return {
+    kind,
+    kicker: null,
+    title: "New slide",
+    subtitle: null,
+    items: kind === "agenda" ? ["First item"] : null,
+    columns: kind === "bullets" ? [{ heading: "", bullets: [""] }] : null,
+    steps: kind === "steps" ? [{ title: "Step one", description: "" }] : null,
+    body: null,
+    note: null,
+    imageUrl: null,
+    imageLabel: null,
+  };
+}
+
 function SlideEditor({
   index,
   total,
   slide,
+  sectionNumber,
   assets,
   onChange,
   onMove,
@@ -303,42 +342,226 @@ function SlideEditor({
   index: number;
   total: number;
   slide: KnowledgeSlide;
+  sectionNumber: number;
   assets: KnowledgeAsset[];
   onChange: (next: KnowledgeSlide) => void;
   onMove: (dir: -1 | 1) => void;
   onDelete: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const kindLabel = SLIDE_KINDS.find((k) => k.kind === slide.kind)?.label ?? slide.kind;
+
   return (
     <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-4">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-3">
         <span className="font-mono text-[11px] font-bold text-kp-text-faint">
           SLIDE {index + 1}
         </span>
-        <input
-          value={slide.title}
-          onChange={(e) => onChange({ ...slide, title: e.target.value })}
-          className="focus-kp flex-1 bg-transparent border border-transparent hover:border-kp-border rounded-lg px-2 py-1 text-[15px] font-bold text-kp-text"
-        />
+        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.06em] bg-kp-surface-alt border border-kp-border rounded-[5px] px-1.5 py-0.5 text-kp-text-muted">
+          {kindLabel}
+        </span>
+        <span className="flex-1 truncate text-[13.5px] font-semibold text-kp-text">{slide.title}</span>
+        <SmallButton onClick={() => setOpen((v) => !v)}>{open ? "Close" : "Edit"}</SmallButton>
         <SmallButton onClick={() => onMove(-1)} disabled={index === 0}>↑</SmallButton>
         <SmallButton onClick={() => onMove(1)} disabled={index === total - 1}>↓</SmallButton>
         <SmallButton tone="danger" onClick={onDelete}>Delete</SmallButton>
       </div>
-      <div className="space-y-1.5 pl-2">
-        {slide.bullets.map((b, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-kp-crimson text-[13px]">•</span>
-            <input
-              value={b}
-              onChange={(e) =>
-                onChange({ ...slide, bullets: slide.bullets.map((x, j) => (j === i ? e.target.value : x)) })
+
+      <SlideView slide={slide} sectionNumber={sectionNumber} />
+
+      {open && (
+        <div className="mt-4 space-y-3">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field
+              label="Kicker (small label above title)"
+              value={slide.kicker ?? ""}
+              onChange={(v) => onChange({ ...slide, kicker: v || null })}
+            />
+            <Field label="Title" value={slide.title} onChange={(v) => onChange({ ...slide, title: v })} />
+          </div>
+
+          {(slide.kind === "title" || slide.kind === "section" || slide.kind === "image") && (
+            <Field
+              label={slide.kind === "image" ? "Body paragraph" : "Subtitle"}
+              value={(slide.kind === "image" ? slide.body : slide.subtitle) ?? ""}
+              onChange={(v) =>
+                onChange(
+                  slide.kind === "image"
+                    ? { ...slide, body: v || null }
+                    : { ...slide, subtitle: v || null }
+                )
               }
-              className="focus-kp flex-1 bg-transparent border border-transparent hover:border-kp-border rounded-lg px-2 py-1 text-[13.5px] text-kp-text"
+            />
+          )}
+
+          {slide.kind === "image" && (
+            <Field
+              label="Callout note (optional)"
+              value={slide.note ?? ""}
+              onChange={(v) => onChange({ ...slide, note: v || null })}
+            />
+          )}
+
+          {slide.kind === "agenda" && (
+            <StringListEditor
+              label="Agenda items"
+              values={slide.items ?? []}
+              onChange={(items) => onChange({ ...slide, items })}
+            />
+          )}
+
+          {slide.kind === "bullets" && (
+            <div className="space-y-3">
+              {(slide.columns ?? []).map((col, ci) => (
+                <div key={ci} className="border border-kp-border-soft rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Field
+                      label={`Column ${ci + 1} heading`}
+                      value={col.heading}
+                      onChange={(v) =>
+                        onChange({
+                          ...slide,
+                          columns: (slide.columns ?? []).map((c, j) => (j === ci ? { ...c, heading: v } : c)),
+                        })
+                      }
+                    />
+                    {(slide.columns?.length ?? 0) > 1 && (
+                      <SmallButton
+                        tone="danger"
+                        onClick={() =>
+                          onChange({ ...slide, columns: (slide.columns ?? []).filter((_, j) => j !== ci) })
+                        }
+                      >
+                        Remove column
+                      </SmallButton>
+                    )}
+                  </div>
+                  <StringListEditor
+                    label='Bullets ("Lead — description" bolds the lead)'
+                    values={col.bullets}
+                    onChange={(bullets) =>
+                      onChange({
+                        ...slide,
+                        columns: (slide.columns ?? []).map((c, j) => (j === ci ? { ...c, bullets } : c)),
+                      })
+                    }
+                  />
+                </div>
+              ))}
+              {(slide.columns?.length ?? 0) < 2 && (
+                <SmallButton
+                  onClick={() =>
+                    onChange({ ...slide, columns: [...(slide.columns ?? []), { heading: "", bullets: [""] }] })
+                  }
+                >
+                  + Add second column
+                </SmallButton>
+              )}
+            </div>
+          )}
+
+          {slide.kind === "steps" && (
+            <div className="space-y-2">
+              {(slide.steps ?? []).map((step, si) => (
+                <div key={si} className="grid sm:grid-cols-[1fr_2fr_auto] gap-2 items-end">
+                  <Field
+                    label={`Step ${si + 1} title`}
+                    value={step.title}
+                    onChange={(v) =>
+                      onChange({
+                        ...slide,
+                        steps: (slide.steps ?? []).map((s, j) => (j === si ? { ...s, title: v } : s)),
+                      })
+                    }
+                  />
+                  <Field
+                    label="Description"
+                    value={step.description}
+                    onChange={(v) =>
+                      onChange({
+                        ...slide,
+                        steps: (slide.steps ?? []).map((s, j) => (j === si ? { ...s, description: v } : s)),
+                      })
+                    }
+                  />
+                  <SmallButton
+                    tone="danger"
+                    onClick={() => onChange({ ...slide, steps: (slide.steps ?? []).filter((_, j) => j !== si) })}
+                  >
+                    ✕
+                  </SmallButton>
+                </div>
+              ))}
+              {(slide.steps?.length ?? 0) < 4 && (
+                <SmallButton
+                  onClick={() =>
+                    onChange({ ...slide, steps: [...(slide.steps ?? []), { title: "", description: "" }] })
+                  }
+                >
+                  + Add step
+                </SmallButton>
+              )}
+            </div>
+          )}
+
+          {(slide.kind === "image" || slide.imageUrl) && (
+            <div>
+              <label className="font-mono text-[11px] uppercase text-kp-text-faint block mb-1">
+                Screenshot on this slide
+              </label>
+              <select
+                value={slide.imageUrl ?? ""}
+                onChange={(e) => {
+                  const url = e.target.value || null;
+                  const asset = assets.find((a) => a.url === url);
+                  onChange({
+                    ...slide,
+                    imageUrl: url,
+                    imageLabel: asset ? `${asset.name} — page ${asset.page}` : null,
+                  });
+                }}
+                className="focus-kp w-full bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[13px]"
+              >
+                <option value="">None</option>
+                {assets.map((a) => (
+                  <option key={a.url} value={a.url}>
+                    {a.name} — page {a.page}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StringListEditor({
+  label,
+  values,
+  onChange,
+}: {
+  label: string;
+  values: string[];
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <div>
+      <label className="font-mono text-[11px] uppercase text-kp-text-faint block mb-1">{label}</label>
+      <div className="space-y-1.5">
+        {values.map((v, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              value={v}
+              onChange={(e) => onChange(values.map((x, j) => (j === i ? e.target.value : x)))}
+              className="focus-kp flex-1 bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13.5px]"
             />
             <button
               type="button"
-              onClick={() => onChange({ ...slide, bullets: slide.bullets.filter((_, j) => j !== i) })}
+              onClick={() => onChange(values.filter((_, j) => j !== i))}
               className="text-kp-text-faint hover:text-kp-bad text-[13px] px-1"
-              title="Remove bullet"
+              title="Remove"
             >
               ✕
             </button>
@@ -346,52 +569,12 @@ function SlideEditor({
         ))}
         <button
           type="button"
-          onClick={() => onChange({ ...slide, bullets: [...slide.bullets, ""] })}
-          className="text-[12.5px] font-semibold text-kp-text-muted hover:text-kp-navy pl-5"
+          onClick={() => onChange([...values, ""])}
+          className="text-[12.5px] font-semibold text-kp-text-muted hover:text-kp-navy"
         >
-          + bullet
+          + add
         </button>
       </div>
-
-      {/* Screenshot (exhibit page) shown on this slide */}
-      {(assets.length > 0 || slide.imageUrl) && (
-        <div className="mt-3 pt-3 border-t border-kp-border-soft flex items-start gap-4">
-          <div className="flex-1">
-            <label className="font-mono text-[11px] uppercase text-kp-text-faint block mb-1">
-              Screenshot on this slide
-            </label>
-            <select
-              value={slide.imageUrl ?? ""}
-              onChange={(e) => {
-                const url = e.target.value || null;
-                const asset = assets.find((a) => a.url === url);
-                onChange({
-                  ...slide,
-                  imageUrl: url,
-                  imageLabel: asset ? `${asset.name} — page ${asset.page}` : null,
-                });
-              }}
-              className="focus-kp w-full bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[13px]"
-            >
-              <option value="">None (text-only slide)</option>
-              {assets.map((a) => (
-                <option key={a.url} value={a.url}>
-                  {a.name} — page {a.page}
-                </option>
-              ))}
-            </select>
-          </div>
-          {slide.imageUrl && (
-            <a href={slide.imageUrl} target="_blank" rel="noreferrer" className="shrink-0">
-              <img
-                src={slide.imageUrl}
-                alt={slide.imageLabel ?? "Slide screenshot"}
-                className="h-24 rounded-lg border border-kp-border object-contain bg-white"
-              />
-            </a>
-          )}
-        </div>
-      )}
     </div>
   );
 }

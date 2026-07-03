@@ -4,6 +4,12 @@ import type { AuthState } from "../hooks/useAuth";
 import { isAssigned, type KnowledgeAttempt, type KnowledgeTest } from "../types/knowledge";
 import { daysUntil, formatDue, getRoster, resolveAssigned, roleLabel, type RosterUser } from "../lib/roster";
 import {
+  previewReminders,
+  sendReminders,
+  REMINDER_LABEL,
+  type ReminderRow,
+} from "../lib/reminders";
+import {
   createTest,
   deleteAttempt,
   deleteTest,
@@ -475,11 +481,49 @@ function AssignmentsAdmin() {
   const [branchFilter, setBranchFilter] = useState("");
   const [showAll, setShowAll] = useState(false);
 
+  // On-demand reminder emails (the daily 8am job does this automatically).
+  const [reminders, setReminders] = useState<ReminderRow[] | null>(null);
+  const [reminderBusy, setReminderBusy] = useState(false);
+  const [reminderMsg, setReminderMsg] = useState<string | null>(null);
+  const [reminderErr, setReminderErr] = useState<string | null>(null);
+
   useEffect(() => {
     Promise.all([getRoster(), listTests({ activeOnly: false }), listAttempts({})])
       .then(([r, t, a]) => { setRoster(r); setTests(t); setAttempts(a); })
       .catch((e) => setError((e as Error).message));
   }, []);
+
+  async function preview() {
+    setReminderBusy(true);
+    setReminderErr(null);
+    setReminderMsg(null);
+    try {
+      setReminders(await previewReminders());
+    } catch (e) {
+      setReminderErr((e as Error).message);
+    } finally {
+      setReminderBusy(false);
+    }
+  }
+
+  async function send() {
+    if (!reminders?.length) return;
+    if (!window.confirm(`Email ${reminders.length} reminder${reminders.length === 1 ? "" : "s"} now?`)) return;
+    setReminderBusy(true);
+    setReminderErr(null);
+    try {
+      const r = await sendReminders();
+      setReminders(null);
+      setReminderMsg(
+        `Sent ${r.sent} of ${r.candidates} reminder${r.candidates === 1 ? "" : "s"}` +
+          (r.failed ? ` · ${r.failed} failed` : "")
+      );
+    } catch (e) {
+      setReminderErr((e as Error).message);
+    } finally {
+      setReminderBusy(false);
+    }
+  }
 
   const completion = useMemo<TestCompletion[]>(() => {
     if (!roster || !tests || !attempts) return [];
@@ -593,12 +637,31 @@ function AssignmentsAdmin() {
             </label>
             <button
               type="button"
+              onClick={preview}
+              disabled={reminderBusy}
+              className="ml-auto px-3.5 py-1.5 border border-kp-border-strong hover:border-kp-navy text-kp-text text-[13px] font-semibold rounded-lg disabled:opacity-50"
+            >
+              {reminderBusy && !reminders ? "Checking…" : "Preview reminders"}
+            </button>
+            <button
+              type="button"
               onClick={exportCsv}
-              className="ml-auto px-3.5 py-1.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[13px] font-semibold rounded-lg"
+              className="px-3.5 py-1.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[13px] font-semibold rounded-lg"
             >
               Export CSV
             </button>
           </div>
+
+          {reminderErr && <NoticeBox tone="bad" className="mb-4">{reminderErr}</NoticeBox>}
+          {reminderMsg && <NoticeBox tone="good" className="mb-4">{reminderMsg}</NoticeBox>}
+          {reminders && (
+            <ReminderPanel
+              rows={reminders}
+              busy={reminderBusy}
+              onSend={send}
+              onDismiss={() => { setReminders(null); setReminderMsg(null); }}
+            />
+          )}
 
           {completion.length === 0 && (
             <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-8 text-center text-[14px] text-kp-text-muted">
@@ -668,6 +731,78 @@ function AssignmentsAdmin() {
         </>
       )}
     </section>
+  );
+}
+
+/* Preview of the reminder emails that would go out right now, with a
+ * one-click Send. Mirrors what the daily 8am job sends automatically. */
+function ReminderPanel({
+  rows,
+  busy,
+  onSend,
+  onDismiss,
+}: {
+  rows: ReminderRow[];
+  busy: boolean;
+  onSend: () => void;
+  onDismiss: () => void;
+}) {
+  const tone = (k: ReminderRow["kind"]) =>
+    k === "overdue" ? "bad" : k === "dueSoon" ? "warn" : "neutral";
+
+  if (rows.length === 0) {
+    return (
+      <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5 mb-4 flex items-center justify-between gap-4">
+        <div className="text-[13.5px] text-kp-text-muted">
+          <span className="text-kp-good font-semibold">Nothing to send.</span> Everyone assigned has
+          already been notified (or has completed their tests). Reminders send automatically each
+          morning as due dates approach.
+        </div>
+        <SmallButton onClick={onDismiss}>Dismiss</SmallButton>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs mb-4 overflow-hidden">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-kp-border-soft">
+        <span className="text-[14px] font-bold text-kp-text">
+          {rows.length} reminder{rows.length === 1 ? "" : "s"} ready to send
+        </span>
+        <span className="text-[12.5px] text-kp-text-faint">
+          This is exactly what the daily 8am job would send now.
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <SmallButton onClick={onDismiss}>Dismiss</SmallButton>
+          <button
+            type="button"
+            onClick={onSend}
+            disabled={busy}
+            className="px-3.5 py-1.5 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[13px] font-semibold rounded-lg disabled:opacity-50"
+          >
+            {busy ? "Sending…" : `Send ${rows.length} now`}
+          </button>
+        </div>
+      </div>
+      <div className="max-h-72 overflow-y-auto divide-y divide-kp-border-soft">
+        {rows.map((r, i) => (
+          <div key={`${r.to}-${r.test}-${i}`} className="flex items-center gap-3 px-4 py-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13.5px] font-semibold text-kp-text truncate">{r.name}</div>
+              <div className="text-[11.5px] text-kp-text-faint truncate">
+                {r.to} · {r.test}
+              </div>
+            </div>
+            {r.dueDate && (
+              <span className="text-[11.5px] font-mono text-kp-text-faint whitespace-nowrap">
+                due {formatDue(r.dueDate)}
+              </span>
+            )}
+            <Pill tone={tone(r.kind)}>{REMINDER_LABEL[r.kind]}</Pill>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

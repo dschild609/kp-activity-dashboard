@@ -13,6 +13,7 @@ import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import Anthropic from "@anthropic-ai/sdk";
 import * as mammoth from "mammoth";
+import sharp from "sharp";
 import { randomUUID } from "crypto";
 
 if (admin.apps.length === 0) {
@@ -160,8 +161,21 @@ const TEST_SCHEMA = {
             properties: {
               exhibit: { type: "integer", description: "1-based exhibit number" },
               page: { type: "integer", description: "1-based page within that exhibit" },
+              region: {
+                type: ["object", "null"],
+                description:
+                  "Crop showing just the part of the page this slide discusses, in PIXEL coordinates of that page image (dimensions were given per page). null = show the whole page.",
+                properties: {
+                  x: { type: "integer", description: "Left edge, px" },
+                  y: { type: "integer", description: "Top edge, px" },
+                  width: { type: "integer", description: "Crop width, px" },
+                  height: { type: "integer", description: "Crop height, px" },
+                },
+                required: ["x", "y", "width", "height"],
+                additionalProperties: false,
+              },
             },
-            required: ["exhibit", "page"],
+            required: ["exhibit", "page", "region"],
             additionalProperties: false,
           },
         },
@@ -196,7 +210,9 @@ const TEST_SCHEMA = {
 
 const SYSTEM_PROMPT = `You create internal training material for KP Staffing, a light-industrial staffing company. Given a source document (and possibly exhibit files such as blank forms), you produce a slide deck in the KP Training Template layouts, plus a quiz.
 
-THE SLIDE DECK teaches the document's content to staff. Cover ALL substantive content — policies, procedures, rules, numbers, deadlines — in teaching order, in plain language a busy employee can absorb. Typically 8-18 slides depending on the document's length. Six layouts are available; pick per slide by what the content needs:
+THE SLIDE DECK teaches the document's content to staff. Cover ALL substantive content — policies, procedures, rules, numbers, deadlines — in teaching order, in plain language a busy employee can absorb. Typically 8-18 slides depending on the document's length.
+
+CHOOSING LAYOUTS: you decide the layout for every slide, and the decision should be driven by the shape of that slide's content — never by habit. Before writing each slide, ask: is this a sequence (steps)? a comparison or pairing (two-column bullets)? a list of topics (agenda)? a form or visual to look at (image)? a topic change (section)? Only content that is genuinely "several parallel facts about one topic" belongs on a single-column bullets slide. A deck where most content slides are single-column bullet lists is a failure of layout choice — real documents contain processes, pairings, and visuals, and the deck should reflect that. Six layouts are available:
 
 - "title": the cover. Exactly ONE, always the FIRST slide. kicker = the training series or topic in a few words (e.g. "NEW HIRE TRAINING"); title = the deck's name; subtitle = one welcoming sentence about what the training covers.
 - "agenda": the second slide. items = 3-6 rows summarizing what the training covers, in order. kicker "AGENDA", title like "What to Expect".
@@ -207,7 +223,9 @@ THE SLIDE DECK teaches the document's content to staff. Cover ALL substantive co
 
 Layout discipline: every slide sets exactly the fields its kind needs and null for the rest. Don't pad the deck — no "questions?" slide, no closing slide, no bullet that restates the slide title.
 
-EXHIBIT SCREENSHOTS: when exhibits are provided (e.g. a blank W-4 form), use "image" slides to walk through them. A slide discussing Step 2 of a form should show the page containing Step 2. Place image slides at the point in the teaching order where the form section comes up. Don't force every page onto a slide, and don't repeat the same page on many slides.
+EXHIBIT SCREENSHOTS: when exhibits are provided (e.g. a blank W-4 form), use "image" slides to walk through them. Place image slides at the point in the teaching order where the form section comes up. Don't force every page onto a slide, and don't repeat the same view on many slides.
+
+CROPPING — show the PART of the page the slide is about: each page image's pixel dimensions are given with it. When a slide discusses one section of a page (one step of a form, one signature block, one table), set image.region to the pixel rectangle containing just that section, with a comfortable margin (~20-30px) around it so nothing is clipped mid-line; the region should span the page's full printed width unless the relevant content is clearly narrower. Use region: null only when the slide is genuinely about the whole page (an overview or orientation slide). A crop that shows exactly what the bullets describe teaches far better than a full page where the viewer must hunt for the relevant part.
 
 THE QUIZ: 10-15 questions (fewer only if the document is genuinely thin) testing understanding of the slide content. Mix multiple-choice (MC, 3-4 options) and true/false (TF). Every answer must be verifiable from the slides. Wrong options should be plausible — the kinds of mistakes someone who skimmed would make — never joke answers. TF questions use optionA "True" and optionB "False" with optionC/optionD null. Spread questions across the whole document, not just the start.
 
@@ -298,29 +316,35 @@ export const generateKnowledgeTest = onRequest(
     const testRef = db.collection("knowledgeTests").doc();
     const bucket = admin.storage().bucket();
     const assets: Array<{ name: string; page: number; url: string }> = [];
-    // pageUrl[exhibitIdx][pageIdx] -> url
-    const pageUrl: string[][] = [];
+
+    async function uploadJpeg(path: string, buffer: Buffer): Promise<string> {
+      const token = randomUUID();
+      const file = bucket.file(path);
+      await file.save(buffer, {
+        contentType: "image/jpeg",
+        metadata: { metadata: { firebaseStorageDownloadTokens: token } },
+      });
+      return (
+        `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
+        `${encodeURIComponent(path)}?alt=media&token=${token}`
+      );
+    }
+
+    // pages[exhibitIdx][pageIdx] -> {url, buffer, width, height}
+    const pages: Array<Array<{ url: string; buffer: Buffer; width: number; height: number }>> = [];
     try {
       for (let ei = 0; ei < exhibitList.length; ei++) {
-        pageUrl.push([]);
+        pages.push([]);
         for (let pi = 0; pi < exhibitList[ei].pages.length; pi++) {
           const page = exhibitList[ei].pages[pi];
-          const token = randomUUID();
-          const path = `knowledgeAssets/${testRef.id}/exhibit-${ei + 1}-page-${page.pageNumber}.jpg`;
-          const file = bucket.file(path);
-          await file.save(Buffer.from(page.imageBase64, "base64"), {
-            contentType: "image/jpeg",
-            metadata: { metadata: { firebaseStorageDownloadTokens: token } },
-          });
-          const url =
-            `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
-            `${encodeURIComponent(path)}?alt=media&token=${token}`;
-          pageUrl[ei].push(url);
-          assets.push({
-            name: exhibitList[ei].name,
-            page: page.pageNumber,
-            url,
-          });
+          const buffer = Buffer.from(page.imageBase64, "base64");
+          const meta = await sharp(buffer).metadata();
+          const url = await uploadJpeg(
+            `knowledgeAssets/${testRef.id}/exhibit-${ei + 1}-page-${page.pageNumber}.jpg`,
+            buffer
+          );
+          pages[ei].push({ url, buffer, width: meta.width ?? 0, height: meta.height ?? 0 });
+          assets.push({ name: exhibitList[ei].name, page: page.pageNumber, url });
         }
       }
     } catch (e) {
@@ -342,9 +366,10 @@ export const generateKnowledgeTest = onRequest(
         text: `Exhibit ${ei + 1}: "${exhibit.name}" (${exhibit.pages.length} page${exhibit.pages.length === 1 ? "" : "s"}). The pages follow in order.`,
       });
       exhibit.pages.forEach((page, pi) => {
+        const dims = pages[ei][pi];
         content.push({
           type: "text",
-          text: `Exhibit ${ei + 1}, page ${pi + 1}:`,
+          text: `Exhibit ${ei + 1}, page ${pi + 1} (${dims.width}×${dims.height} px):`,
         });
         content.push({
           type: "image",
@@ -371,7 +396,11 @@ export const generateKnowledgeTest = onRequest(
       steps: Array<{ title: string; description: string }> | null;
       body: string | null;
       note: string | null;
-      image: { exhibit: number; page: number } | null;
+      image: {
+        exhibit: number;
+        page: number;
+        region: { x: number; y: number; width: number; height: number } | null;
+      } | null;
     }
     let generated: {
       name: string;
@@ -416,19 +445,49 @@ export const generateKnowledgeTest = onRequest(
       return;
     }
 
-    // Resolve slide image references to stored URLs (drop invalid refs)
-    const slides = generated.slides.map((s) => {
+    // Resolve slide image references to stored URLs. When the model chose a
+    // crop region, cut it out of the page (clamped to bounds) and store the
+    // detail as its own asset — the slide shows exactly the relevant part.
+    let cropCount = 0;
+    const slides = [];
+    for (const s of generated.slides) {
       let imageUrl: string | null = null;
       let imageLabel: string | null = null;
-      if (s.image) {
-        const url = pageUrl[s.image.exhibit - 1]?.[s.image.page - 1];
-        if (url) {
-          imageUrl = url;
-          const ex = exhibitList[s.image.exhibit - 1];
-          imageLabel = `${ex.name} — page ${s.image.page}`;
+      const pageInfo = s.image ? pages[s.image.exhibit - 1]?.[s.image.page - 1] : undefined;
+      if (s.image && pageInfo) {
+        const ex = exhibitList[s.image.exhibit - 1];
+        imageUrl = pageInfo.url;
+        imageLabel = `${ex.name} — page ${s.image.page}`;
+        const r = s.image.region;
+        if (r && pageInfo.width > 0 && pageInfo.height > 0) {
+          // Clamp to page bounds; ignore degenerate or near-full-page crops
+          const x = Math.max(0, Math.min(r.x, pageInfo.width - 1));
+          const y = Math.max(0, Math.min(r.y, pageInfo.height - 1));
+          const w = Math.max(1, Math.min(r.width, pageInfo.width - x));
+          const h = Math.max(1, Math.min(r.height, pageInfo.height - y));
+          const nearFull = w * h > 0.9 * pageInfo.width * pageInfo.height;
+          if (!nearFull && w >= 60 && h >= 40) {
+            try {
+              cropCount += 1;
+              const cropBuffer = await sharp(pageInfo.buffer)
+                .extract({ left: x, top: y, width: w, height: h })
+                .jpeg({ quality: 88 })
+                .toBuffer();
+              const cropUrl = await uploadJpeg(
+                `knowledgeAssets/${testRef.id}/crop-${cropCount}-ex${s.image.exhibit}-p${s.image.page}.jpg`,
+                cropBuffer
+              );
+              imageUrl = cropUrl;
+              imageLabel = `${ex.name} — page ${s.image.page} (detail)`;
+              assets.push({ name: `${ex.name} (detail ${cropCount})`, page: s.image.page, url: cropUrl });
+            } catch (e) {
+              // Fall back to the full page rather than failing the run
+              console.error("crop failed, using full page", e);
+            }
+          }
         }
       }
-      return {
+      slides.push({
         kind: s.kind,
         kicker: s.kicker ?? null,
         title: s.title,
@@ -440,8 +499,8 @@ export const generateKnowledgeTest = onRequest(
         note: s.note ?? null,
         imageUrl,
         imageLabel,
-      };
-    });
+      });
+    }
 
     // Save as a DRAFT test (invisible to employees until published)
     const batch = db.batch();

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
-import type { KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
+import type { Assignment, KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
 import { attemptGate, listAttempts, listTests } from "../lib/knowledge";
+import { assignmentMatchesUser, daysUntil, formatDue } from "../lib/roster";
 import { Pill } from "../components/ui";
 
 export function TestsPage() {
-  const { user } = useOutletContext<AuthState>();
+  const { user, role, branch } = useOutletContext<AuthState>();
   const [tests, setTests] = useState<KnowledgeTest[] | null>(null);
   const [attempts, setAttempts] = useState<KnowledgeAttempt[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -87,15 +88,22 @@ export function TestsPage() {
             >
               <div className="flex items-start justify-between gap-3 mb-2">
                 <h2 className="text-[16px] font-bold text-kp-text">{test.name}</h2>
-                {best ? (
-                  best.passed ? (
-                    <Pill tone="good">Passed</Pill>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  {best ? (
+                    best.passed ? (
+                      <Pill tone="good">Passed</Pill>
+                    ) : (
+                      <Pill tone="bad">Failed</Pill>
+                    )
                   ) : (
-                    <Pill tone="bad">Failed</Pill>
-                  )
-                ) : (
-                  <Pill tone="neutral">Not started</Pill>
-                )}
+                    <Pill tone="neutral">Not started</Pill>
+                  )}
+                  {user &&
+                    !best?.passed &&
+                    assignmentMatchesUser(test.assignment, { uid: user.uid, role, branch }) && (
+                      <AssignedBadge assignment={test.assignment} />
+                    )}
+                </div>
               </div>
               {test.description && (
                 <p className="text-[13.5px] text-kp-text-muted mb-3">{test.description}</p>
@@ -155,6 +163,28 @@ export function TestsPage() {
       </div>
     </main>
   );
+}
+
+/* "Assigned to you" badge on the current user's assigned tests, reflecting
+ * the optional due date (overdue / due today / due soon / due later). */
+function AssignedBadge({ assignment }: { assignment: Assignment }) {
+  const base = "px-2 py-0.5 text-[11.5px] font-bold rounded-[6px] border whitespace-nowrap";
+  const due = assignment.dueDate;
+  if (!due) {
+    return <span className={`${base} text-kp-violet bg-kp-crimson-soft border-kp-crimson-soft`}>Assigned</span>;
+  }
+  const d = daysUntil(due);
+  if (d < 0) {
+    return <span className={`${base} text-kp-bad bg-kp-bad-bg border-kp-bad-border`}>Overdue · was {formatDue(due)}</span>;
+  }
+  if (d === 0) {
+    return <span className={`${base} text-kp-warn bg-kp-warn-bg border-kp-warn-border`}>Due today</span>;
+  }
+  const tone =
+    d <= 7
+      ? "text-kp-warn bg-kp-warn-bg border-kp-warn-border"
+      : "text-kp-violet bg-kp-crimson-soft border-kp-crimson-soft";
+  return <span className={`${base} ${tone}`}>Assigned · due {formatDue(due)}</span>;
 }
 
 function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {

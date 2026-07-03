@@ -101,6 +101,8 @@ export interface Assignment {
   roles: string[];
   branches: string[];
   uids: string[];
+  /* Optional due date as an ISO date string "YYYY-MM-DD"; null = no due date. */
+  dueDate: string | null;
 }
 
 export const EMPTY_ASSIGNMENT: Assignment = {
@@ -108,6 +110,7 @@ export const EMPTY_ASSIGNMENT: Assignment = {
   roles: [],
   branches: [],
   uids: [],
+  dueDate: null,
 };
 
 export function isAssigned(a: Assignment): boolean {

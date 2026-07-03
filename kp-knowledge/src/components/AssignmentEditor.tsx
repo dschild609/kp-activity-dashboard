@@ -149,7 +149,28 @@ export function AssignmentEditor({
         </>
       )}
 
-      <div className="pt-1 text-[13px] text-kp-text-muted border-t border-kp-border-soft">
+      <div className="flex items-center gap-3 pt-1 border-t border-kp-border-soft">
+        <label className="font-mono text-[11px] uppercase text-kp-text-faint">Due date</label>
+        <input
+          type="date"
+          value={assignment.dueDate ?? ""}
+          onChange={(e) => onChange({ ...assignment, dueDate: e.target.value || null })}
+          className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13px]"
+        />
+        {assignment.dueDate ? (
+          <button
+            type="button"
+            onClick={() => onChange({ ...assignment, dueDate: null })}
+            className="text-[12.5px] font-semibold text-kp-text-muted hover:text-kp-navy"
+          >
+            Clear (no due date)
+          </button>
+        ) : (
+          <span className="text-[12.5px] text-kp-text-faint">No due date</span>
+        )}
+      </div>
+
+      <div className="text-[13px] text-kp-text-muted">
         {roster.length === 0 ? (
           "Loading roster…"
         ) : assignedCount === 0 ? (

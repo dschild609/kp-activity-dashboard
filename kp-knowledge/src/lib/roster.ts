@@ -46,6 +46,49 @@ export function resolveAssigned(a: Assignment, roster: RosterUser[]): RosterUser
   );
 }
 
+// Legacy role spellings → canonical (mirror of the server's ROLE_ALIASES).
+const ROLE_ALIASES: Record<string, string> = { ops_manager: "operations_manager" };
+export function normalizeRole(r: string | null): string | null {
+  return r ? (ROLE_ALIASES[r] ?? r) : null;
+}
+
+/* Does a test's assignment target this specific user? Used to show the
+ * "Assigned to you" badge on the employee Tests page. */
+export function assignmentMatchesUser(
+  a: Assignment,
+  ctx: { uid: string; role: string | null; branch: string | null }
+): boolean {
+  if (a.everyone) return true;
+  if (a.uids.includes(ctx.uid)) return true;
+  const role = normalizeRole(ctx.role);
+  if (role && a.roles.includes(role)) return true;
+  if (ctx.branch && a.branches.includes(ctx.branch)) return true;
+  return false;
+}
+
+/* Today's local date as "YYYY-MM-DD" for lexicographic due-date compares. */
+export function todayIso(): string {
+  const d = new Date();
+  const m = `${d.getMonth() + 1}`.padStart(2, "0");
+  const day = `${d.getDate()}`.padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/* Days from today to the due date (negative = overdue). */
+export function daysUntil(dueDate: string): number {
+  const [y, m, d] = dueDate.split("-").map(Number);
+  const due = new Date(y, m - 1, d);
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((due.getTime() - start.getTime()) / 86400000);
+}
+
+/* Format an ISO due date for display, e.g. "Jul 15". */
+export function formatDue(dueDate: string): string {
+  const [y, m, d] = dueDate.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 /* Assignable roles (canonical) with friendly labels — mirrors the KP role
  * vocabulary. Order roughly by tier. */
 export const ASSIGNABLE_ROLES: Array<{ id: string; label: string }> = [

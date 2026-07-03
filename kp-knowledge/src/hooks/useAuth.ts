@@ -14,6 +14,8 @@ import { canManageByRole, canViewResultsByRole, type UserRole } from "../types/r
 export interface AuthState {
   user: User | null;
   role: UserRole;
+  /* Branch code from the user doc — used to match branch assignments. */
+  branch: string | null;
   /* App access granted from the admin console (appAccess.knowledge) —
    * gates taking tests. Managers/admins always pass. */
   canTake: boolean;
@@ -44,6 +46,7 @@ interface UserDocData {
   hubRole?: string | null; // legacy role field
   appAccess?: Record<string, boolean>;
   canManageKnowledgeTests?: boolean;
+  branch?: string | null;
 }
 
 async function ensureUserDoc(u: User): Promise<void> {
@@ -130,6 +133,7 @@ export function useAuth(): AuthState {
     return {
       user: DEV_MOCK_USER,
       role: devOverrides.role,
+      branch: null,
       canTake: true,
       canManage: true,
       canViewResults: true,
@@ -151,5 +155,5 @@ export function useAuth(): AuthState {
   const canTake = canManage || userDoc?.appAccess?.knowledge === true;
   const canViewResults = canManage || canViewResultsByRole(role);
 
-  return { user, role, canTake, canManage, canViewResults, loading, error, signIn, signOut };
+  return { user, role, branch: userDoc?.branch ?? null, canTake, canManage, canViewResults, loading, error, signIn, signOut };
 }

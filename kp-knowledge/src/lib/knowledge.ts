@@ -38,6 +38,7 @@ function testFromDoc(id: string, data: Record<string, unknown>): KnowledgeTest {
       roles: [],
       branches: [],
       uids: [],
+      dueDate: null,
       ...((data.assignment as Partial<KnowledgeTest["assignment"]>) ?? {}),
     },
     retakePolicy: (data.retakePolicy as KnowledgeTest["retakePolicy"]) ?? "single",

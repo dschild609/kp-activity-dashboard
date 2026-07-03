@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import { isAssigned, type KnowledgeAttempt, type KnowledgeTest } from "../types/knowledge";
-import { getRoster, resolveAssigned, roleLabel, type RosterUser } from "../lib/roster";
+import { daysUntil, formatDue, getRoster, resolveAssigned, roleLabel, type RosterUser } from "../lib/roster";
 import {
   createTest,
   deleteAttempt,
@@ -617,6 +617,7 @@ function AssignmentsAdmin() {
                     <Pill tone={tc.done === tc.total ? "good" : pct >= 50 ? "warn" : "bad"}>
                       {tc.done}/{tc.total} completed · {pct}%
                     </Pill>
+                    <DueBadge dueDate={tc.test.assignment.dueDate} allDone={tc.done === tc.total} />
                     <AssignmentSummary test={tc.test} />
                   </div>
                   {rows.length === 0 ? (
@@ -667,6 +668,18 @@ function AssignmentsAdmin() {
         </>
       )}
     </section>
+  );
+}
+
+function DueBadge({ dueDate, allDone }: { dueDate: string | null; allDone: boolean }) {
+  if (!dueDate) return null;
+  const d = daysUntil(dueDate);
+  if (!allDone && d < 0) return <Pill tone="bad">Overdue · was {formatDue(dueDate)}</Pill>;
+  if (!allDone && d <= 7) return <Pill tone="warn">Due {formatDue(dueDate)}</Pill>;
+  return (
+    <span className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-kp-text-faint">
+      Due {formatDue(dueDate)}
+    </span>
   );
 }
 

@@ -93,6 +93,7 @@ function setGatedVisibility({
   opsHub,
   clientDashboard,
   hrHub,
+  knowledge,
   remoteHub,
   admin,
 } = {}) {
@@ -108,6 +109,7 @@ function setGatedVisibility({
   set("opsHub", !!opsHub);
   set("clientDashboard", !!clientDashboard);
   set("hrHub", !!hrHub);
+  set("knowledge", !!knowledge);
   set("remoteHub", !!remoteHub);
   set("admin", !!admin);
 }

@@ -171,57 +171,15 @@ export function AdminTestEditorPage() {
 
       {/* ── Slides ── */}
       <section className="mb-10">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="kp-kicker">Slides ({slides.length})</h2>
-          <select
-            value=""
-            onChange={(e) => {
-              const kind = e.target.value as SlideKind;
-              if (!kind) return;
-              setSlides([...slides, newSlide(kind)]);
-              markDirty();
-            }}
-            className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold text-kp-text-muted"
-          >
-            <option value="">+ Add slide…</option>
-            {SLIDE_KINDS.map((k) => (
-              <option key={k.kind} value={k.kind}>{k.label}</option>
-            ))}
-          </select>
-        </div>
-        {slides.length === 0 && (
-          <div className="text-[13.5px] text-kp-text-muted bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
-            No slides — employees go straight to the quiz.
-          </div>
-        )}
-        <div className="space-y-3">
-          {slides.map((slide, i) => (
-            <SlideEditor
-              key={i}
-              index={i}
-              total={slides.length}
-              slide={slide}
-              sectionNumber={sectionNumberAt(slides, i)}
-              assets={test.assets}
-              onChange={(next) => {
-                setSlides(slides.map((s, j) => (j === i ? next : s)));
-                markDirty();
-              }}
-              onMove={(dir) => {
-                const j = i + dir;
-                if (j < 0 || j >= slides.length) return;
-                const next = [...slides];
-                [next[i], next[j]] = [next[j], next[i]];
-                setSlides(next);
-                markDirty();
-              }}
-              onDelete={() => {
-                setSlides(slides.filter((_, j) => j !== i));
-                markDirty();
-              }}
-            />
-          ))}
-        </div>
+        <h2 className="kp-kicker mb-4">Slides ({slides.length})</h2>
+        <SlideWorkbench
+          slides={slides}
+          assets={test.assets}
+          onChange={(next) => {
+            setSlides(next);
+            markDirty();
+          }}
+        />
       </section>
 
       {/* ── Questions ── */}
@@ -329,256 +287,233 @@ function newSlide(kind: SlideKind): KnowledgeSlide {
   };
 }
 
-function SlideEditor({
-  index,
-  total,
-  slide,
-  sectionNumber,
+/* Switch a slide to a different template layout, carrying its text along.
+ * Text lines are pooled from whatever the old layout held, then poured
+ * into the shape the new layout needs. */
+function convertSlide(slide: KnowledgeSlide, kind: SlideKind): KnowledgeSlide {
+  if (kind === slide.kind) return slide;
+
+  const lines: string[] = [
+    ...(slide.items ?? []),
+    ...(slide.columns ?? []).flatMap((c) => c.bullets),
+    ...(slide.steps ?? []).map((s) => (s.description ? `${s.title} — ${s.description}` : s.title)),
+    ...(slide.body ? [slide.body] : []),
+    ...(slide.subtitle ? [slide.subtitle] : []),
+  ].filter((l) => l.trim());
+
+  const base: KnowledgeSlide = {
+    kind,
+    kicker: slide.kicker,
+    title: slide.title,
+    subtitle: null,
+    items: null,
+    columns: null,
+    steps: null,
+    body: null,
+    note: slide.note,
+    imageUrl: slide.imageUrl ?? null,
+    imageLabel: slide.imageLabel ?? null,
+    imagePosition: slide.imagePosition,
+  };
+
+  switch (kind) {
+    case "title":
+    case "section":
+      return { ...base, subtitle: lines[0] ?? null, note: null };
+    case "agenda":
+      return { ...base, items: lines.length ? lines : ["First item"], note: null };
+    case "bullets": {
+      const cols = slide.columns?.length
+        ? slide.columns
+        : [{ heading: "", bullets: lines.length ? lines : [""] }];
+      return { ...base, columns: cols, note: null };
+    }
+    case "steps":
+      return {
+        ...base,
+        note: null,
+        steps: (lines.length ? lines : ["Step one"]).slice(0, 4).map((l) => {
+          const sep = l.indexOf(" — ");
+          return sep > 0
+            ? { title: l.slice(0, sep), description: l.slice(sep + 3) }
+            : { title: l, description: "" };
+        }),
+      };
+    case "image":
+      return { ...base, body: lines.join(" ") || null };
+  }
+}
+
+function SlideWorkbench({
+  slides,
   assets,
   onChange,
-  onMove,
-  onDelete,
 }: {
-  index: number;
-  total: number;
-  slide: KnowledgeSlide;
-  sectionNumber: number;
+  slides: KnowledgeSlide[];
   assets: KnowledgeAsset[];
-  onChange: (next: KnowledgeSlide) => void;
-  onMove: (dir: -1 | 1) => void;
-  onDelete: () => void;
+  onChange: (next: KnowledgeSlide[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const kindLabel = SLIDE_KINDS.find((k) => k.kind === slide.kind)?.label ?? slide.kind;
+  const [selected, setSelected] = useState(0);
+  const index = Math.min(selected, Math.max(slides.length - 1, 0));
+  const slide = slides[index];
 
-  return (
-    <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="font-mono text-[11px] font-bold text-kp-text-faint">
-          SLIDE {index + 1}
-        </span>
-        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.06em] bg-kp-surface-alt border border-kp-border rounded-[5px] px-1.5 py-0.5 text-kp-text-muted">
-          {kindLabel}
-        </span>
-        <span className="flex-1 truncate text-[13.5px] font-semibold text-kp-text">{slide.title}</span>
-        <SmallButton onClick={() => setOpen((v) => !v)}>{open ? "Close" : "Edit"}</SmallButton>
-        <SmallButton onClick={() => onMove(-1)} disabled={index === 0}>↑</SmallButton>
-        <SmallButton onClick={() => onMove(1)} disabled={index === total - 1}>↓</SmallButton>
-        <SmallButton tone="danger" onClick={onDelete}>Delete</SmallButton>
-      </div>
+  const update = (next: KnowledgeSlide) =>
+    onChange(slides.map((s, j) => (j === index ? next : s)));
 
-      <SlideView slide={slide} sectionNumber={sectionNumber} />
+  const moveSlide = (dir: -1 | 1) => {
+    const j = index + dir;
+    if (j < 0 || j >= slides.length) return;
+    const next = [...slides];
+    [next[index], next[j]] = [next[j], next[index]];
+    onChange(next);
+    setSelected(j);
+  };
 
-      {open && (
-        <div className="mt-4 space-y-3">
-          <div className="grid sm:grid-cols-2 gap-3">
-            <Field
-              label="Kicker (small label above title)"
-              value={slide.kicker ?? ""}
-              onChange={(v) => onChange({ ...slide, kicker: v || null })}
-            />
-            <Field label="Title" value={slide.title} onChange={(v) => onChange({ ...slide, title: v })} />
-          </div>
-
-          {(slide.kind === "title" || slide.kind === "section" || slide.kind === "image") && (
-            <Field
-              label={slide.kind === "image" ? "Body paragraph" : "Subtitle"}
-              value={(slide.kind === "image" ? slide.body : slide.subtitle) ?? ""}
-              onChange={(v) =>
-                onChange(
-                  slide.kind === "image"
-                    ? { ...slide, body: v || null }
-                    : { ...slide, subtitle: v || null }
-                )
-              }
-            />
-          )}
-
-          {slide.kind === "image" && (
-            <Field
-              label="Callout note (optional)"
-              value={slide.note ?? ""}
-              onChange={(v) => onChange({ ...slide, note: v || null })}
-            />
-          )}
-
-          {slide.kind === "agenda" && (
-            <StringListEditor
-              label="Agenda items"
-              values={slide.items ?? []}
-              onChange={(items) => onChange({ ...slide, items })}
-            />
-          )}
-
-          {slide.kind === "bullets" && (
-            <div className="space-y-3">
-              {(slide.columns ?? []).map((col, ci) => (
-                <div key={ci} className="border border-kp-border-soft rounded-lg p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Field
-                      label={`Column ${ci + 1} heading`}
-                      value={col.heading}
-                      onChange={(v) =>
-                        onChange({
-                          ...slide,
-                          columns: (slide.columns ?? []).map((c, j) => (j === ci ? { ...c, heading: v } : c)),
-                        })
-                      }
-                    />
-                    {(slide.columns?.length ?? 0) > 1 && (
-                      <SmallButton
-                        tone="danger"
-                        onClick={() =>
-                          onChange({ ...slide, columns: (slide.columns ?? []).filter((_, j) => j !== ci) })
-                        }
-                      >
-                        Remove column
-                      </SmallButton>
-                    )}
-                  </div>
-                  <StringListEditor
-                    label='Bullets ("Lead — description" bolds the lead)'
-                    values={col.bullets}
-                    onChange={(bullets) =>
-                      onChange({
-                        ...slide,
-                        columns: (slide.columns ?? []).map((c, j) => (j === ci ? { ...c, bullets } : c)),
-                      })
-                    }
-                  />
-                </div>
-              ))}
-              {(slide.columns?.length ?? 0) < 2 && (
-                <SmallButton
-                  onClick={() =>
-                    onChange({ ...slide, columns: [...(slide.columns ?? []), { heading: "", bullets: [""] }] })
-                  }
-                >
-                  + Add second column
-                </SmallButton>
-              )}
-            </div>
-          )}
-
-          {slide.kind === "steps" && (
-            <div className="space-y-2">
-              {(slide.steps ?? []).map((step, si) => (
-                <div key={si} className="grid sm:grid-cols-[1fr_2fr_auto] gap-2 items-end">
-                  <Field
-                    label={`Step ${si + 1} title`}
-                    value={step.title}
-                    onChange={(v) =>
-                      onChange({
-                        ...slide,
-                        steps: (slide.steps ?? []).map((s, j) => (j === si ? { ...s, title: v } : s)),
-                      })
-                    }
-                  />
-                  <Field
-                    label="Description"
-                    value={step.description}
-                    onChange={(v) =>
-                      onChange({
-                        ...slide,
-                        steps: (slide.steps ?? []).map((s, j) => (j === si ? { ...s, description: v } : s)),
-                      })
-                    }
-                  />
-                  <SmallButton
-                    tone="danger"
-                    onClick={() => onChange({ ...slide, steps: (slide.steps ?? []).filter((_, j) => j !== si) })}
-                  >
-                    ✕
-                  </SmallButton>
-                </div>
-              ))}
-              {(slide.steps?.length ?? 0) < 4 && (
-                <SmallButton
-                  onClick={() =>
-                    onChange({ ...slide, steps: [...(slide.steps ?? []), { title: "", description: "" }] })
-                  }
-                >
-                  + Add step
-                </SmallButton>
-              )}
-            </div>
-          )}
-
-          {(slide.kind === "image" || slide.imageUrl) && (
-            <div>
-              <label className="font-mono text-[11px] uppercase text-kp-text-faint block mb-1">
-                Screenshot on this slide
-              </label>
-              <select
-                value={slide.imageUrl ?? ""}
-                onChange={(e) => {
-                  const url = e.target.value || null;
-                  const asset = assets.find((a) => a.url === url);
-                  onChange({
-                    ...slide,
-                    imageUrl: url,
-                    imageLabel: asset ? `${asset.name} — page ${asset.page}` : null,
-                  });
-                }}
-                className="focus-kp w-full bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[13px]"
-              >
-                <option value="">None</option>
-                {assets.map((a) => (
-                  <option key={a.url} value={a.url}>
-                    {a.name} — page {a.page}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StringListEditor({
-  label,
-  values,
-  onChange,
-}: {
-  label: string;
-  values: string[];
-  onChange: (next: string[]) => void;
-}) {
-  return (
-    <div>
-      <label className="font-mono text-[11px] uppercase text-kp-text-faint block mb-1">{label}</label>
-      <div className="space-y-1.5">
-        {values.map((v, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <input
-              value={v}
-              onChange={(e) => onChange(values.map((x, j) => (j === i ? e.target.value : x)))}
-              className="focus-kp flex-1 bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13.5px]"
-            />
-            <button
-              type="button"
-              onClick={() => onChange(values.filter((_, j) => j !== i))}
-              className="text-kp-text-faint hover:text-kp-bad text-[13px] px-1"
-              title="Remove"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => onChange([...values, ""])}
-          className="text-[12.5px] font-semibold text-kp-text-muted hover:text-kp-navy"
+  if (slides.length === 0) {
+    return (
+      <div className="text-[13.5px] text-kp-text-muted bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5 flex items-center gap-4">
+        No slides — employees go straight to the quiz.
+        <select
+          value=""
+          onChange={(e) => {
+            if (!e.target.value) return;
+            onChange([newSlide(e.target.value as SlideKind)]);
+            setSelected(0);
+          }}
+          className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold text-kp-text-muted"
         >
-          + add
-        </button>
+          <option value="">+ Add slide…</option>
+          {SLIDE_KINDS.map((k) => (
+            <option key={k.kind} value={k.kind}>{k.label}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-4">
+      {/* Filmstrip */}
+      <div className="w-[150px] shrink-0 space-y-2 max-h-[640px] overflow-y-auto pr-1">
+        {slides.map((s, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => setSelected(i)}
+            className={`block w-full rounded-lg overflow-hidden border-2 transition-colors ${
+              i === index ? "border-kp-crimson" : "border-kp-border hover:border-kp-border-strong"
+            }`}
+            title={s.title}
+          >
+            <div className="relative w-full" style={{ aspectRatio: "16/9" }}>
+              <div
+                className="absolute top-0 left-0 pointer-events-none"
+                style={{ width: 896, transform: "scale(0.1607)", transformOrigin: "top left" }}
+              >
+                <SlideView slide={s} sectionNumber={sectionNumberAt(slides, i)} />
+              </div>
+            </div>
+            <div className="font-mono text-[9.5px] py-0.5 bg-kp-surface text-kp-text-faint">
+              {i + 1}
+            </div>
+          </button>
+        ))}
+        <select
+          value=""
+          onChange={(e) => {
+            if (!e.target.value) return;
+            const next = [...slides];
+            next.splice(index + 1, 0, newSlide(e.target.value as SlideKind));
+            onChange(next);
+            setSelected(index + 1);
+          }}
+          className="focus-kp w-full bg-kp-surface border border-kp-border rounded-lg px-1.5 py-1.5 text-[11.5px] font-semibold text-kp-text-muted"
+        >
+          <option value="">+ Add slide…</option>
+          {SLIDE_KINDS.map((k) => (
+            <option key={k.kind} value={k.kind}>{k.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Canvas + toolbar */}
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <label className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-kp-text-faint">
+            Layout
+          </label>
+          <select
+            value={slide.kind}
+            onChange={(e) => update(convertSlide(slide, e.target.value as SlideKind))}
+            className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[12.5px] font-semibold"
+          >
+            {SLIDE_KINDS.map((k) => (
+              <option key={k.kind} value={k.kind}>{k.label}</option>
+            ))}
+          </select>
+
+          <label className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-kp-text-faint ml-2">
+            Image
+          </label>
+          <select
+            value={slide.imageUrl ?? ""}
+            onChange={(e) => {
+              const url = e.target.value || null;
+              const asset = assets.find((a) => a.url === url);
+              update({
+                ...slide,
+                imageUrl: url,
+                imageLabel: asset ? `${asset.name} — page ${asset.page}` : null,
+                ...(url && slide.kind !== "image" ? { kind: "image" as const } : null),
+              });
+            }}
+            className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[12.5px] max-w-[220px]"
+            disabled={assets.length === 0}
+            title={assets.length === 0 ? "This test has no uploaded exhibit images" : undefined}
+          >
+            <option value="">{assets.length === 0 ? "No exhibits uploaded" : "None"}</option>
+            {assets.map((a) => (
+              <option key={a.url} value={a.url}>
+                {a.name} — page {a.page}
+              </option>
+            ))}
+          </select>
+
+          <div className="ml-auto flex gap-2">
+            <SmallButton onClick={() => moveSlide(-1)} disabled={index === 0}>← Move</SmallButton>
+            <SmallButton onClick={() => moveSlide(1)} disabled={index === slides.length - 1}>Move →</SmallButton>
+            <SmallButton
+              onClick={() => {
+                const next = [...slides];
+                next.splice(index + 1, 0, JSON.parse(JSON.stringify(slide)));
+                onChange(next);
+                setSelected(index + 1);
+              }}
+            >
+              Duplicate
+            </SmallButton>
+            <SmallButton
+              tone="danger"
+              onClick={() => {
+                onChange(slides.filter((_, j) => j !== index));
+                setSelected(Math.max(0, index - 1));
+              }}
+            >
+              Delete
+            </SmallButton>
+          </div>
+        </div>
+
+        <SlideView slide={slide} sectionNumber={sectionNumberAt(slides, index)} onChange={update} />
+
+        <p className="mt-2 text-[12px] text-kp-text-faint">
+          Click any text on the slide to edit it · hover a row for reorder/remove controls ·
+          Slide {index + 1} of {slides.length}
+        </p>
       </div>
     </div>
   );
 }
-
 /* ── Question editor card ────────────────────────────────────────── */
 
 function QuestionEditor({

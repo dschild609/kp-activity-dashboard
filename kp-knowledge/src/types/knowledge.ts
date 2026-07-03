@@ -38,6 +38,8 @@ export interface KnowledgeSlide {
    * from the test's assets */
   imageUrl?: string | null;
   imageLabel?: string | null;
+  /* Which half of an image slide holds the screenshot (default left) */
+  imagePosition?: "left" | "right";
 }
 
 /* Older tests stored slides as {title, bullets: string[]} — normalize to a

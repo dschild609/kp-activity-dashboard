@@ -4,6 +4,7 @@ import type { AuthState } from "../hooks/useAuth";
 import type { Assignment, KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
 import { attemptGate, listAttempts, listTests } from "../lib/knowledge";
 import { assignmentMatchesUser, daysUntil, formatDue } from "../lib/roster";
+import { subscribeTags } from "../lib/tags";
 import { Pill } from "../components/ui";
 
 export function TestsPage() {
@@ -12,6 +13,7 @@ export function TestsPage() {
   const [attempts, setAttempts] = useState<KnowledgeAttempt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [vocab, setVocab] = useState<string[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -19,6 +21,10 @@ export function TestsPage() {
       .then(([t, a]) => { setTests(t); setAttempts(a); })
       .catch((e) => setError((e as Error).message));
   }, [user]);
+
+  // The managed tag vocabulary drives the filter chips, so a new tag shows
+  // up here even before any test uses it.
+  useEffect(() => subscribeTags(setVocab), []);
 
   const attemptsByTest = useMemo(() => {
     const map = new Map<string, KnowledgeAttempt[]>();
@@ -30,10 +36,13 @@ export function TestsPage() {
     return map;
   }, [attempts]);
 
-  const allTags = useMemo(
-    () => [...new Set((tests ?? []).flatMap((t) => t.tags))].sort(),
-    [tests]
-  );
+  // Full vocabulary (in admin order) plus any legacy tags a test still
+  // carries that aren't in the vocabulary, so every test stays filterable.
+  const allTags = useMemo(() => {
+    const used = new Set((tests ?? []).flatMap((t) => t.tags));
+    const extra = [...used].filter((t) => !vocab.includes(t)).sort();
+    return [...vocab, ...extra];
+  }, [tests, vocab]);
 
   const visible = (tests ?? []).filter((t) => !tagFilter || t.tags.includes(tagFilter));
 

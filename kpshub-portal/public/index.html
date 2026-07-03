@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#0b141b" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <title>KP Apps</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      /* KP "Command" theme — Crimson #94002A + Ink #0B141B sampled from
+         the KP logo. Mirrors kp-ops-hub/src/index.css (the reference
+         implementation) so the portal reads as the same product. */
+      --ink: #0b141b;
+      --ink-hover: #15212b;
+      --navy: var(--ink);            /* legacy alias — buttons, focus, arcs */
+      --navy-hover: var(--ink-hover);
+      --crimson: #94002a;
+      --chrome: #0b141b;             /* top bar; melts into canvas in dark */
+      --chrome-border: #1b2935;
+      --text: #0b141b;
+      --text-muted: #516170;
+      --text-faint: #8493a1;
+      --bg: #e6eaee;
+      --surface: #ffffff;
+      --border: #c7d2dc;
+      --border-strong: #9fb0bf;
+      --warn-bg: #fbf0d6;
+      --warn-border: #efd79e;
+      --warn-text: #c2820c;
+      --bad-bg: #fbe7e9;
+      --bad-border: #f2c6cb;
+      --bad-text: #ce3340;
+      --arc-ink: #0b141b;            /* spinner counter-arc */
+      /* Flat panels: crisp 1px borders carry the depth; resting shadows
+         collapse to a hairline (inset top highlight in dark). */
+      --shadow-flat: 0 1px 0 rgba(11, 20, 27, 0.05);
+      --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    /* Command · Dark — class-based like the rest of the family. The boot
+       script below applies the saved choice (or, on first visit, the OS
+       preference) before paint; the topbar sun/moon toggle persists it. */
+    html.dark {
+        --ink: #1b2935;              /* buttons stay visible on dark */
+        --ink-hover: #24394a;
+        --crimson: #ff3b5c;
+        --chrome: #070c11;
+        --chrome-border: #162631;
+        --text: #eaf1f6;
+        --text-muted: #8fa6b4;
+        --text-faint: #5e7280;
+        --bg: #070c11;
+        --surface: #0f1a23;
+        --border: #24394a;
+        --border-strong: #3a586e;
+        --warn-bg: rgba(255, 194, 75, 0.1);
+        --warn-border: rgba(255, 194, 75, 0.28);
+        --warn-text: #ffc24b;
+        --bad-bg: rgba(255, 90, 110, 0.1);
+        --bad-border: rgba(255, 90, 110, 0.3);
+        --bad-text: #ff5a6e;
+        --arc-ink: #8fa6b4;
+        --shadow-flat: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        color-scheme: dark;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: "Hanken Grotesk", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    ::selection { background: rgba(148, 0, 42, 0.18); }
+    html.dark ::selection { background: rgba(255, 59, 92, 0.3); }
+    header.topbar {
+      background: var(--chrome);
+      border-bottom: 1px solid var(--chrome-border);
+      color: #fff;
+      height: 56px;
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    @media (min-width: 640px) { header.topbar { padding: 0 20px; } }
+    @media (min-width: 768px) { header.topbar { padding: 0 28px; } }
+    .brand-badge {
+      width: 32px;
+      height: 32px;
+      background: var(--crimson);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 14px;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+    .brand-text { font-weight: 800; font-size: 15.5px; }
+    .user-area {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .user-area button {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.20);
+      color: rgba(255,255,255,0.80);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color .12s, color .12s;
+    }
+    .user-area button:hover { border-color: rgba(255,255,255,0.4); color: #fff; }
+    /* Sun/moon theme toggle — borderless icon button, mirrors the apps. */
+    .user-area .theme-toggle {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: none;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.7);
+      transition: color .12s, background-color .12s;
+    }
+    .user-area .theme-toggle:hover { color: #fff; background: rgba(255,255,255,0.1); border: none; }
+    .theme-toggle .icon-sun { display: none; }
+    .theme-toggle .icon-moon { display: block; }
+    html.dark .theme-toggle .icon-sun { display: block; }
+    html.dark .theme-toggle .icon-moon { display: none; }
+    .user-area .user-email {
+      font-size: 12px;
+      color: rgba(255,255,255,0.70);
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Three view states, only one visible at a time:
+       .state-loading, .state-signedout, .state-pending, .state-app.
+       JS adds the matching .show-X class to <body>; CSS reveals one. */
+    body > main { display: none; }
+    body.show-loading  .state-loading,
+    body.show-signedout .state-signedout,
+    body.show-pending  .state-pending,
+    body.show-app      .state-app {
+      display: flex;
+      animation: portal-fade .18s ease both;
+    }
+    @keyframes portal-fade { from { opacity: 0; } to { opacity: 1; } }
+    .user-area .signedin-only { display: none; }
+    body.show-app .user-area .signedin-only,
+    body.show-pending .user-area .signedin-only { display: inline-flex; }
+    .user-area .signedout-only { display: none; }
+    body.show-signedout .user-area .signedout-only { display: inline-flex; }
+
+    main {
+      flex: 1;
+      width: 100%;
+      flex-direction: column;
+    }
+
+    /* Loading state — KP spinner. Mirrors the KpLoader React component
+       used by every app in the family so the portal's auth-resolution
+       moment reads as part of the same product. Two thin counter-
+       rotating arcs (crimson clockwise, navy counter-clockwise) around
+       a static crimson "KP" badge, with an uppercase "LOADING" label
+       below that fades three dots in sequence. */
+    .state-loading {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+    }
+    .kp-spinner {
+      position: relative;
+      width: 96px;
+      height: 96px;
+      display: grid;
+      place-items: center;
+    }
+    .kp-spinner svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .kp-spinner svg circle {
+      fill: none;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+    }
+    .kp-spinner-arc-outer { animation: kp-spin 2.2s linear infinite; }
+    .kp-spinner-arc-inner { animation: kp-spinrev 3.1s linear infinite; }
+    .kp-spinner-arc-outer circle { stroke: var(--crimson);  stroke-dasharray: 62 234; }
+    .kp-spinner-arc-inner circle { stroke: var(--arc-ink);  stroke-dasharray: 42 203; }
+    .kp-spinner-badge {
+      position: relative;
+      width: 50px;
+      height: 50px;
+      background: var(--crimson);
+      border-radius: 6px;
+      color: #fff;
+      font-weight: 900;
+      font-size: 21px;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow-flat);
+    }
+    .kp-spinner-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.36em;
+      text-transform: uppercase;
+      color: var(--text);
+      opacity: 0.85;
+    }
+    .kp-spinner-label .dots span {
+      animation: kp-dot 1.4s infinite both;
+    }
+    .kp-spinner-label .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .kp-spinner-label .dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes kp-spin { to { transform: rotate(360deg); } }
+    @keyframes kp-spinrev { to { transform: rotate(-360deg); } }
+    @keyframes kp-dot {
+      0%, 80%, 100% { opacity: 0.18; }
+      40% { opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .kp-spinner-arc-outer, .kp-spinner-arc-inner { animation: none; }
+      .kp-spinner-label .dots span { animation: none; opacity: 1; }
+      body > main { animation: none !important; }
+      a.tile:hover { transform: none; }
+    }
+
+    /* Signed-out state — centered sign-in card. */
+    .state-signedout {
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+    }
+    .signin-card {
+      max-width: 380px;
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 36px 28px;
+      text-align: center;
+      box-shadow: var(--shadow-flat);
+    }
+    .signin-card h1 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .signin-card p {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .signin-card button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      background: var(--ink);
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background-color .12s;
+    }
+    .signin-card button:hover { background: var(--navy-hover); }
+    .signin-card .hint {
+      margin-top: 18px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .signin-card .signin-error {
+      margin-top: 16px;
+      padding: 10px 12px;
+      background: var(--bad-bg);
+      border: 1px solid var(--bad-border);
+      border-radius: 7px;
+      color: var(--bad-text);
+      font-size: 12px;
+      line-height: 1.4;
+      text-align: left;
+    }
+
+    /* Pending state — warning notice, no tiles. */
+    .state-pending {
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+    }
+    .pending-card {
+      max-width: 480px;
+      width: 100%;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      border-radius: 10px;
+      padding: 28px;
+      color: var(--warn-text);
+    }
+    .pending-card h1 {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .pending-card p {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* App state — the tile grid for users with access. */
+    .state-app { padding: 40px 24px 32px; }
+    .container { max-width: 980px; margin: 0 auto; width: 100%; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+      gap: 14px;
+    }
+    a.tile {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      padding: 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: var(--shadow-flat);
+      text-decoration: none;
+      color: inherit;
+      transition: border-color .12s, transform .12s;
+    }
+    a.tile:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-2px);
+    }
+    /* Keyboard focus — tiles + the on-white sign-in button get a navy
+       ring; the navy-topbar buttons get a light ring so it shows. */
+    a.tile:focus-visible,
+    #signin-cta:focus-visible {
+      outline: 2px solid var(--navy);
+      outline-offset: 2px;
+    }
+    .user-area button:focus-visible {
+      outline: 2px solid rgba(255, 255, 255, 0.9);
+      outline-offset: 1px;
+    }
+    /* Gated tiles hidden until app.js confirms access. */
+    a.tile[data-gated]:not(.show) { display: none; }
+    .icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .icon svg {
+      width: 24px; height: 24px;
+      stroke: #fff;
+      stroke-width: 2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .icon.navy    { background: var(--navy); }
+    .icon.crimson { background: var(--crimson); }
+    .icon.indigo  { background: #4F46E5; }
+    .icon.amber   { background: #F59E0B; }
+    .icon.orange  { background: #EA580C; }
+    .icon.slate   { background: #334155; }
+    .icon.emerald { background: #059669; }
+    .icon.teal    { background: #0D9488; }
+    .icon.violet  { background: #7C3AED; }
+    .icon.blue    { background: #2563EB; }
+    /* Admin Console — neutral zinc so it reads as system/control chrome
+       and no longer collides with On-Site Hub's crimson. */
+    .icon.zinc    { background: #3F3F46; }
+    .body { flex: 1; min-width: 0; }
+    .name {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .desc { font-size: 13px; color: var(--text-muted); }
+    footer.foot {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-faint);
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+    @media (max-width: 480px) {
+      .state-app { padding: 24px 16px 16px; }
+      a.tile { padding: 16px; }
+      .user-area .user-email { display: none; }
+    }
+  </style>
+  <script>
+    // Apply the persisted theme before paint so dark users don't flash
+    // white. Mirrors the per-app boot scripts (e.g. kp-admin) — the OS
+    // preference is only the default until a choice is made via the
+    // topbar toggle.
+    (function () {
+      try {
+        var stored = localStorage.getItem("kp-portal-theme");
+        var theme = stored === "light" || stored === "dark"
+          ? stored
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        if (theme === "dark") document.documentElement.classList.add("dark");
+      } catch (e) { /* localStorage unavailable — default to light */ }
+    })();
+  </script>
+</head>
+<body class="show-loading">
+  <header class="topbar">
+    <div class="brand-badge">KP</div>
+    <div class="brand-text">KP Apps</div>
+    <div class="user-area">
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle light or dark mode" title="Toggle light / dark mode">
+        <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <button id="signin-btn" class="signedout-only">Sign in</button>
+      <span class="user-email signedin-only" id="user-email"></span>
+      <button id="signout-btn" class="signedin-only">Sign out</button>
+    </div>
+  </header>
+
+  <main class="state-loading">
+    <div class="kp-spinner" role="status" aria-label="Loading">
+      <svg class="kp-spinner-arc-outer" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="47" />
+      </svg>
+      <svg class="kp-spinner-arc-inner" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="39" />
+      </svg>
+      <div class="kp-spinner-badge">KP</div>
+    </div>
+    <div class="kp-spinner-label">
+      Loading<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+    </div>
+  </main>
+
+  <main class="state-signedout">
+    <div class="signin-card">
+      <h1>Sign in to continue</h1>
+      <p>Use your KP Staffing Google account to access your apps.</p>
+      <button id="signin-cta">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="#fff" d="M21.35 11.1H12v2.85h5.36c-.23 1.49-1.7 4.37-5.36 4.37-3.22 0-5.85-2.67-5.85-5.95s2.63-5.95 5.85-5.95c1.83 0 3.06.78 3.76 1.45l2.56-2.48C16.71 3.66 14.62 2.8 12 2.8 6.93 2.8 2.8 6.93 2.8 12s4.13 9.2 9.2 9.2c5.31 0 8.83-3.73 8.83-8.99 0-.6-.07-1.07-.18-1.51z"/>
+        </svg>
+        Sign in with Google
+      </button>
+      <div class="signin-error" id="signin-error" role="alert" hidden></div>
+      <div class="hint">@kpstaffing.com accounts only.</div>
+    </div>
+  </main>
+
+  <main class="state-pending">
+    <div class="pending-card" role="status">
+      <h1>Waiting on authorization</h1>
+      <p>You're signed in, but your account doesn't have any KP apps granted yet. Reach out to your admin to request access, and your apps will show up here.</p>
+    </div>
+  </main>
+
+  <main class="state-app">
+    <div class="container">
+      <div class="grid">
+
+        <a class="tile" data-gated="clientHealth" href="https://health.kpshub.app/">
+          <div class="icon navy">
+            <svg viewBox="0 0 24 24"><path d="M3 12h3l2-6 4 12 2-6h7"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">Client Health &amp; Budget</div>
+            <div class="desc">Weekly client health, GP, budget vs. actual, risk, and forecast.</div>
+          </div>
+        </a>
+
+        <a class="tile" data-gated="onsiteHub" href="https://onsite.kpshub.app/">
+          <div class="icon crimson">
+            <svg viewBox="0 0 24 24"><path d="M2 22h20M3 22V6l7-4 7 4v16M9 10h2M9 14h2M9 18h2M13 14h2M13 18h2M17 10v12"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">On-Site Hub</div>
+            <div class="desc">Per-location dashboards plus the client-facing Present mode for on-site meetings.</div>
+          </div>
+        </a>
+
+        <a class="tile" data-gated="arReporting" href="https://ar.kpshub.app/">
+          <div class="icon indigo">
+            <svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">AR Reporting</div>
+            <div class="desc">Accounts-receivable aging, past-due clients, and collections trends.</div>
+          </div>
+        </a>
+
+        <a class="tile" data-gated="forecast" href="https://forecast.kpshub.app/">
+          <div class="icon amber">
+            <svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 17v-6M11 17v-3M15 17v-9M19 17v-12"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">Forecast</div>
+            <div class="desc">Rolling financial model, rate cards, YoY tracking, branch projections.</div>
+          </div>
+        </a>
+
+        <a class="tile" data-gated="opsHub" href="https://ops.kpshub.app/">
+          <div class="icon slate">
+            <svg viewBox="0 0 24 24">
+              <line x1="4" y1="21" x2="4" y2="14"/>
+              <line x1="4" y1="10" x2="4" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12" y2="3"/>
+              <line x1="20" y1="21" x2="20" y2="16"/>
+              <line x1="20" y1="12" x2="20" y2="3"/>
+              <line x1="1" y1="14" x2="7" y2="14"/>
+              <line x1="9" y1="8" x2="15" y2="8"/>
+              <line x1="17" y1="16" x2="23" y2="16"/>
+            </svg>
+          </div>
+          <div class="body">
+            <div class="name">Operations Hub</div>
+            <div class="desc">SOPs, onboarding, incident reports, employee documents, team directory.</div>
+          </div>
+        </a>
+
+        <a class="tile" href="https://sales.kpshub.app">
+          <div class="icon emerald">
+            <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">Sales Hub</div>
+            <div class="desc">SOPs, metrics, leaderboards, and sales documents.</div>
+          </div>
+        </a>
+
+        <a class="tile" data-gated="clientDashboard" href="https://client.kpshub.app">
+          <div class="icon teal">
+            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">Client Dashboard</div>
+            <div class="desc">Per-client dashboards — each KP customer signs in to view their own data.</div>
+          </div>
+        </a>
+
+        <a class="tile" data-gated="hrHub" href="https://hr.kpshub.app/">
+          <div class="icon violet">
+            <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">HR Hub</div>
+            <div class="desc">TN unemployment claims, compliance tracking, and HR dashboards.</div>
+          </div>
+        </a>
+
+        <a class="tile" data-gated="knowledge" href="https://knowledge.kpshub.app/">
+          <div class="icon orange">
+            <svg viewBox="0 0 24 24"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">KP Knowledge</div>
+            <div class="desc">Certification tests and training — AI-built slide decks and quizzes for staff.</div>
+          </div>
+        </a>
+
+        <a class="tile" data-gated="remoteHub" href="https://remote.kpshub.app/">
+          <div class="icon blue">
+            <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">Remote Recruiter Hub</div>
+            <div class="desc">Remote recruiter placements, submissions, and GP tracking.</div>
+          </div>
+        </a>
+
+        <a class="tile" data-gated="admin" href="https://admin.kpshub.app/">
+          <div class="icon zinc">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </div>
+          <div class="body">
+            <div class="name">Admin Console</div>
+            <div class="desc">Manage user access, permissions, and employee directory profiles. Admins only.</div>
+          </div>
+        </a>
+
+      </div>
+    </div>
+  </main>
+
+  <footer class="foot">KP Staffing — internal tools</footer>
+  <script>
+    // Theme toggle — persists the choice; the head script applies it on
+    // the next load before paint. Also keeps the browser theme-color in
+    // step so the address bar matches the chrome.
+    (function () {
+      var meta = document.querySelector('meta[name="theme-color"]');
+      function syncMeta() {
+        if (meta) {
+          meta.setAttribute(
+            "content",
+            document.documentElement.classList.contains("dark") ? "#070c11" : "#0b141b"
+          );
+        }
+      }
+      syncMeta();
+      document.getElementById("theme-toggle").addEventListener("click", function () {
+        var dark = document.documentElement.classList.toggle("dark");
+        try { localStorage.setItem("kp-portal-theme", dark ? "dark" : "light"); } catch (e) {}
+        syncMeta();
+      });
+    })();
+  </script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

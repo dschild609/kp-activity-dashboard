@@ -35,7 +35,8 @@ const SLIDE_SCHEMA = {
       description: "MUST be one of the asset URLs provided, or null",
     },
     imageLabel: { type: ["string", "null"] },
-    imagePosition: { type: ["string", "null"], enum: ["left", "right", "top", null] },
+    // enum alone (no `type`) — the validator rejects a type-array + enum combo.
+    imagePosition: { enum: ["left", "right", "top", null] },
   },
   required: [
     "kind", "kicker", "title", "subtitle", "items", "columns", "steps",
@@ -44,7 +45,7 @@ const SLIDE_SCHEMA = {
   additionalProperties: false,
 };
 
-const EDIT_SCHEMA = {
+export const EDIT_SCHEMA = {
   type: "object" as const,
   properties: {
     name: { type: "string" },

@@ -35,7 +35,7 @@ interface ExhibitIn {
 }
 
 // Structured output schema — Claude must return exactly this shape.
-const TEST_SCHEMA = {
+export const TEST_SCHEMA = {
   type: "object" as const,
   properties: {
     name: { type: "string", description: "Short test title, e.g. 'W-4 Completion Certification'" },
@@ -88,7 +88,9 @@ const TEST_SCHEMA = {
             description: "Optional callout note under the body — image slides only",
           },
           imagePosition: {
-            type: ["string", "null"],
+            // enum alone (no `type`) — Anthropic's structured-output validator
+            // rejects a type-array combined with enum (400: "Enum value 'left'
+            // does not match declared type ['string','null']").
             enum: ["left", "top", null],
             description:
               "Image slides only: 'left' = image fills the left half (page-shaped images); 'top' = image spans the top with text below (wide, short crops like a form row). null on non-image slides.",

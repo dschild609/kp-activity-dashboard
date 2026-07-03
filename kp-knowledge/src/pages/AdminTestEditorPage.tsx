@@ -11,6 +11,7 @@ import type {
   SlideKind,
 } from "../types/knowledge";
 import { SlideView, sectionNumberAt } from "../components/SlideView";
+import { SnipModal } from "../components/SnipModal";
 import {
   addQuestion,
   deleteQuestion,
@@ -367,8 +368,29 @@ function SlideWorkbench({
   const [selected, setSelected] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [snipping, setSnipping] = useState(false);
   const index = Math.min(selected, Math.max(slides.length - 1, 0));
   const slide = slides[index];
+
+  async function handleSnip(jpegBase64: string) {
+    if (!slide?.imageUrl) return;
+    const sourceName =
+      assets.find((a) => a.url === slide.imageUrl)?.name ?? slide.imageLabel ?? "image";
+    const snipCount = assets.filter((a) => a.name.startsWith(`${sourceName} (snip`)).length;
+    const added = await uploadTestAssets(testId, {
+      name: `${sourceName} (snip ${snipCount + 1})`,
+      pages: [{ pageNumber: 1, imageBase64: jpegBase64 }],
+    });
+    onAssetsAdded(added);
+    if (added[0]) {
+      onChange(
+        slides.map((s, j) =>
+          j === index ? { ...s, imageUrl: added[0].url, imageLabel: added[0].name } : s
+        )
+      );
+    }
+    setSnipping(false);
+  }
 
   async function handleUpload(file: File) {
     setUploading(true);
@@ -568,7 +590,20 @@ function SlideWorkbench({
           </div>
         </div>
 
-        <SlideView slide={slide} sectionNumber={sectionNumberAt(slides, index)} onChange={update} />
+        <SlideView
+          slide={slide}
+          sectionNumber={sectionNumberAt(slides, index)}
+          onChange={update}
+          onSnip={slide.imageUrl ? () => setSnipping(true) : undefined}
+        />
+
+        {snipping && slide.imageUrl && (
+          <SnipModal
+            imageUrl={slide.imageUrl}
+            onCancel={() => setSnipping(false)}
+            onConfirm={handleSnip}
+          />
+        )}
 
         {uploadError && (
           <div className="mt-3 text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-3">

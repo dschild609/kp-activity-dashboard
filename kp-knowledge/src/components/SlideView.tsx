@@ -18,20 +18,24 @@ const HAIRLINE = "#e3e1d8";
 
 interface EditCtx {
   onChange: (next: KnowledgeSlide) => void;
+  onSnip?: () => void;
 }
 
 export function SlideView({
   slide,
   sectionNumber,
   onChange,
+  onSnip,
 }: {
   slide: KnowledgeSlide;
   /* 1-based ordinal among section slides, for the giant divider numeral */
   sectionNumber?: number;
   /* Present = editable in place */
   onChange?: (next: KnowledgeSlide) => void;
+  /* Editable mode: opens the snip (crop) tool for the slide's image */
+  onSnip?: () => void;
 }) {
-  const edit = onChange ? { onChange } : undefined;
+  const edit = onChange ? { onChange, onSnip } : undefined;
   return (
     <div
       className="w-full aspect-[16/9] rounded-xl border border-kp-border shadow-2xs overflow-hidden relative select-text"
@@ -463,6 +467,17 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
               >
                 ⇄ side
               </button>
+              {edit.onSnip && (
+                <button
+                  type="button"
+                  onClick={edit.onSnip}
+                  className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
+                  style={{ color: INK }}
+                  title="Crop to a part of this image"
+                >
+                  ✂ snip
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => c?.({ ...slide, imageUrl: null, imageLabel: null })}

@@ -93,10 +93,32 @@ export interface KnowledgeAsset {
  * - limited:   up to maxAttempts tries, stops early once passed */
 export type RetakePolicy = "single" | "untilPass" | "limited";
 
+/* Who a test is assigned to. Empty (all fields blank/false) = unassigned —
+ * available to take but not tracked for completion. The assigned roster is
+ * the union of everyone / roles / branches / specific people. */
+export interface Assignment {
+  everyone: boolean;
+  roles: string[];
+  branches: string[];
+  uids: string[];
+}
+
+export const EMPTY_ASSIGNMENT: Assignment = {
+  everyone: false,
+  roles: [],
+  branches: [],
+  uids: [],
+};
+
+export function isAssigned(a: Assignment): boolean {
+  return a.everyone || a.roles.length > 0 || a.branches.length > 0 || a.uids.length > 0;
+}
+
 export interface KnowledgeTest {
   id: string;
   name: string;
   description: string;
+  assignment: Assignment;
   /* Pass rule from the original certification app: pass when
    * wrongCount <= maxWrongToPass (e.g. 15 questions, 3 wrong allowed = 80%) */
   maxWrongToPass: number;

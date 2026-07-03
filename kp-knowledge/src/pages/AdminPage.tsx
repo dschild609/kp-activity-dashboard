@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
-import type { KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
+import { isAssigned, type KnowledgeAttempt, type KnowledgeTest } from "../types/knowledge";
+import { getRoster, resolveAssigned, roleLabel, type RosterUser } from "../lib/roster";
 import {
   createTest,
   deleteAttempt,
@@ -17,7 +18,7 @@ import { seedForkliftTest } from "../lib/seed";
 import { NoticeBox, Pill, SmallButton, Th } from "../components/ui";
 import { DropZone } from "../components/DropZone";
 
-type Tab = "tests" | "ai" | "upload" | "results";
+type Tab = "tests" | "ai" | "upload" | "assignments" | "results";
 
 export function AdminPage() {
   const authed = useOutletContext<AuthState>();
@@ -38,6 +39,7 @@ export function AdminPage() {
     { key: "tests", label: "Tests", show: manage },
     { key: "ai", label: "✨ Create with AI", show: manage },
     { key: "upload", label: "Upload Test", show: manage },
+    { key: "assignments", label: "Assignments", show: manage },
     { key: "results", label: "Results", show: viewResults },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
@@ -74,6 +76,7 @@ export function AdminPage() {
       {activeTab === "tests" && <TestsAdmin authed={authed} />}
       {activeTab === "ai" && <AiCreateAdmin />}
       {activeTab === "upload" && <UploadAdmin authed={authed} />}
+      {activeTab === "assignments" && <AssignmentsAdmin />}
       {activeTab === "results" && <ResultsAdmin />}
     </main>
   );
@@ -446,6 +449,240 @@ function UploadAdmin({ authed }: { authed: AuthState }) {
 }
 
 /* ── Results tab ─────────────────────────────────────────────────── */
+
+/* ── Assignments / completion tab ────────────────────────────────── */
+
+type CompletionStatus = "completed" | "attempted" | "not-started";
+
+interface PersonRow {
+  user: RosterUser;
+  status: CompletionStatus;
+  bestScore: number | null;
+  lastAt: Date | null;
+}
+interface TestCompletion {
+  test: KnowledgeTest;
+  rows: PersonRow[];
+  done: number;
+  total: number;
+}
+
+function AssignmentsAdmin() {
+  const [roster, setRoster] = useState<RosterUser[] | null>(null);
+  const [tests, setTests] = useState<KnowledgeTest[] | null>(null);
+  const [attempts, setAttempts] = useState<KnowledgeAttempt[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [branchFilter, setBranchFilter] = useState("");
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    Promise.all([getRoster(), listTests({ activeOnly: false }), listAttempts({})])
+      .then(([r, t, a]) => { setRoster(r); setTests(t); setAttempts(a); })
+      .catch((e) => setError((e as Error).message));
+  }, []);
+
+  const completion = useMemo<TestCompletion[]>(() => {
+    if (!roster || !tests || !attempts) return [];
+    // attempts keyed by testId → uid → best
+    const byTestUser = new Map<string, Map<string, { passed: boolean; score: number; at: Date | null }>>();
+    for (const a of attempts) {
+      const m = byTestUser.get(a.testId) ?? new Map();
+      const at = a.submittedAt?.toDate() ?? null;
+      const prev = m.get(a.uid);
+      if (!prev || a.passed || a.score > prev.score) {
+        m.set(a.uid, { passed: prev?.passed || a.passed, score: Math.max(a.score, prev?.score ?? 0), at });
+      }
+      byTestUser.set(a.testId, m);
+    }
+    return tests
+      .filter((t) => t.status === "published" && isAssigned(t.assignment))
+      .map((test) => {
+        const assigned = resolveAssigned(test.assignment, roster);
+        const um = byTestUser.get(test.id);
+        const rows: PersonRow[] = assigned.map((user) => {
+          const rec = um?.get(user.uid);
+          const status: CompletionStatus = rec?.passed
+            ? "completed"
+            : rec
+              ? "attempted"
+              : "not-started";
+          return { user, status, bestScore: rec?.score ?? null, lastAt: rec?.at ?? null };
+        });
+        rows.sort((a, b) => a.user.name.localeCompare(b.user.name));
+        return { test, rows, done: rows.filter((r) => r.status === "completed").length, total: rows.length };
+      })
+      .sort((a, b) => a.test.name.localeCompare(b.test.name));
+  }, [roster, tests, attempts]);
+
+  const branches = useMemo(
+    () => [...new Set((roster ?? []).map((u) => u.branch).filter(Boolean))].sort() as string[],
+    [roster]
+  );
+
+  const outstandingPeople = useMemo(() => {
+    const s = new Set<string>();
+    for (const tc of completion)
+      for (const r of tc.rows) if (r.status !== "completed") s.add(r.user.uid);
+    return s.size;
+  }, [completion]);
+
+  function rowsFor(tc: TestCompletion): PersonRow[] {
+    return tc.rows.filter(
+      (r) =>
+        (showAll || r.status !== "completed") &&
+        (!branchFilter || r.user.branch === branchFilter)
+    );
+  }
+
+  function exportCsv() {
+    const head = ["Test", "Person", "Email", "Branch", "Role", "Status", "Best %", "Last attempt"];
+    const lines = [head];
+    for (const tc of completion)
+      for (const r of tc.rows.filter((r) => !branchFilter || r.user.branch === branchFilter)) {
+        if (!showAll && r.status === "completed") continue;
+        lines.push([
+          tc.test.name, r.user.name, r.user.email, r.user.branch ?? "", roleLabel(r.user.role),
+          r.status, r.bestScore != null ? `${r.bestScore}` : "", r.lastAt ? r.lastAt.toLocaleString() : "",
+        ]);
+      }
+    const csv = lines.map((r) => r.map((c) => `"${c.replaceAll('"', '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "kp-knowledge-assignments.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <section>
+      <h2 className="kp-kicker mb-4">Assignment Completion</h2>
+      {error && <NoticeBox tone="bad" className="mb-4">{error}</NoticeBox>}
+      {(!roster || !tests || !attempts) && !error && (
+        <div className="text-[14px] text-kp-text-muted">Loading roster and results…</div>
+      )}
+
+      {roster && tests && attempts && (
+        <>
+          <div className="flex flex-wrap items-center gap-3 mb-5">
+            <div className="text-[13.5px] text-kp-text-muted">
+              <strong className="text-kp-text">{completion.length}</strong> assigned tests ·{" "}
+              <strong className={outstandingPeople ? "text-kp-bad" : "text-kp-good"}>
+                {outstandingPeople}
+              </strong>{" "}
+              {outstandingPeople === 1 ? "person" : "people"} with outstanding work
+            </div>
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13px]"
+            >
+              <option value="">All branches</option>
+              {branches.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1.5 text-[13px] text-kp-text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(e) => setShowAll(e.target.checked)}
+                className="w-3.5 h-3.5 accent-kp-navy"
+              />
+              Show completed too
+            </label>
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="ml-auto px-3.5 py-1.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[13px] font-semibold rounded-lg"
+            >
+              Export CSV
+            </button>
+          </div>
+
+          {completion.length === 0 && (
+            <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-8 text-center text-[14px] text-kp-text-muted">
+              No published tests are assigned yet. Set an assignment on a test to track completion.
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {completion.map((tc) => {
+              const rows = rowsFor(tc);
+              const pct = tc.total ? Math.round((tc.done / tc.total) * 100) : 0;
+              return (
+                <div key={tc.test.id} className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs overflow-hidden">
+                  <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-kp-border-soft">
+                    <span className="text-[15px] font-bold text-kp-text">{tc.test.name}</span>
+                    <Pill tone={tc.done === tc.total ? "good" : pct >= 50 ? "warn" : "bad"}>
+                      {tc.done}/{tc.total} completed · {pct}%
+                    </Pill>
+                    <AssignmentSummary test={tc.test} />
+                  </div>
+                  {rows.length === 0 ? (
+                    <div className="px-4 py-4 text-[13.5px] text-kp-good">
+                      ✓ Everyone {branchFilter ? `in ${branchFilter} ` : ""}has completed this.
+                    </div>
+                  ) : (
+                    <table className="w-full text-[13.5px]">
+                      <thead>
+                        <tr className="bg-kp-surface-alt border-b border-kp-border-strong">
+                          <Th>Person</Th>
+                          <Th>Branch</Th>
+                          <Th>Role</Th>
+                          <Th>Status</Th>
+                          <Th align="right">Best</Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r) => (
+                          <tr key={r.user.uid} className="border-b border-kp-border-soft last:border-0">
+                            <td className="px-4 py-2.5">
+                              <div className="font-semibold text-kp-text">{r.user.name}</div>
+                              <div className="text-[11.5px] text-kp-text-faint">{r.user.email}</div>
+                            </td>
+                            <td className="px-4 py-2.5 font-mono text-[12px] text-kp-text-muted">{r.user.branch ?? "—"}</td>
+                            <td className="px-4 py-2.5 text-kp-text-muted">{roleLabel(r.user.role)}</td>
+                            <td className="px-4 py-2.5">
+                              {r.status === "completed" ? (
+                                <Pill tone="good">Completed</Pill>
+                              ) : r.status === "attempted" ? (
+                                <Pill tone="warn">Attempted, not passed</Pill>
+                              ) : (
+                                <Pill tone="bad">Not started</Pill>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-right text-kp-text-muted">
+                              {r.bestScore != null ? `${r.bestScore}%` : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function AssignmentSummary({ test }: { test: KnowledgeTest }) {
+  const a = test.assignment;
+  const parts: string[] = [];
+  if (a.everyone) parts.push("Everyone");
+  if (a.roles.length) parts.push(`${a.roles.length} role${a.roles.length > 1 ? "s" : ""}`);
+  if (a.branches.length) parts.push(a.branches.join(", "));
+  if (a.uids.length) parts.push(`${a.uids.length} individual${a.uids.length > 1 ? "s" : ""}`);
+  return (
+    <span className="ml-auto font-mono text-[10.5px] uppercase tracking-[0.06em] text-kp-text-faint">
+      {parts.join(" · ")}
+    </span>
+  );
+}
 
 function ResultsAdmin() {
   const [attempts, setAttempts] = useState<KnowledgeAttempt[] | null>(null);

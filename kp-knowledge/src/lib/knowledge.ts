@@ -33,6 +33,13 @@ function testFromDoc(id: string, data: Record<string, unknown>): KnowledgeTest {
     name: (data.name as string) ?? "",
     description: (data.description as string) ?? "",
     maxWrongToPass: (data.maxWrongToPass as number) ?? 0,
+    assignment: {
+      everyone: false,
+      roles: [],
+      branches: [],
+      uids: [],
+      ...((data.assignment as Partial<KnowledgeTest["assignment"]>) ?? {}),
+    },
     retakePolicy: (data.retakePolicy as KnowledgeTest["retakePolicy"]) ?? "single",
     maxAttempts: (data.maxAttempts as number) ?? 3,
     isActive: (data.isActive as boolean) ?? false,
@@ -193,6 +200,7 @@ export async function updateTest(
       | "tags"
       | "slides"
       | "status"
+      | "assignment"
     >
   >
 ): Promise<void> {

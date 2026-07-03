@@ -2,8 +2,10 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import {
+  EMPTY_ASSIGNMENT,
   makeSlide,
   type AnswerKey,
+  type Assignment,
   type KnowledgeAsset,
   type KnowledgeAttempt,
   type KnowledgeQuestion,
@@ -14,6 +16,7 @@ import {
 } from "../types/knowledge";
 import { SlideView, move, sectionNumberAt } from "../components/SlideView";
 import { SnipModal } from "../components/SnipModal";
+import { AssignmentEditor } from "../components/AssignmentEditor";
 import { Field, NoticeBox, Pill, SmallButton } from "../components/ui";
 import {
   addQuestion,
@@ -26,6 +29,7 @@ import {
 } from "../lib/knowledge";
 import { editTestWithAI, snipTestAsset, uploadTestAssets } from "../lib/aiGenerate";
 import { renderExhibit } from "../lib/exhibitPages";
+import { getRoster, type RosterUser } from "../lib/roster";
 
 /* Review-and-edit surface for a test — the approval gate for AI-generated
  * drafts. Everything is editable: metadata, slides, and questions. Publish
@@ -47,6 +51,7 @@ export function AdminTestEditorPage() {
   const [tags, setTags] = useState("");
   const [retakePolicy, setRetakePolicy] = useState<RetakePolicy>("untilPass");
   const [maxAttempts, setMaxAttempts] = useState(3);
+  const [assignment, setAssignment] = useState<Assignment>(EMPTY_ASSIGNMENT);
   const [slides, setSlides] = useState<KnowledgeSlide[]>([]);
   const [assets, setAssets] = useState<KnowledgeAsset[]>([]);
   const [attempts, setAttempts] = useState<KnowledgeAttempt[]>([]);
@@ -74,6 +79,11 @@ export function AdminTestEditorPage() {
     listAttempts({ testId }).then(setAttempts).catch(() => {});
   }, [testId]);
 
+  const [roster, setRoster] = useState<RosterUser[]>([]);
+  useEffect(() => {
+    getRoster().then(setRoster).catch(() => {});
+  }, []);
+
   const reload = useCallback(async () => {
     if (!testId) return;
     try {
@@ -87,6 +97,7 @@ export function AdminTestEditorPage() {
       setTags(t.tags.join(", "));
       setRetakePolicy(t.retakePolicy);
       setMaxAttempts(t.maxAttempts);
+      setAssignment(t.assignment);
       setSlides(t.slides);
       setAssets(t.assets);
       setDirty(false);
@@ -129,6 +140,7 @@ export function AdminTestEditorPage() {
     maxWrongToPass: maxWrong,
     retakePolicy,
     maxAttempts,
+    assignment,
     tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
     slides,
   });
@@ -238,6 +250,16 @@ export function AdminTestEditorPage() {
             )}
           </div>
         </div>
+      </section>
+
+      {/* ── Assignment ── */}
+      <section className="mb-10">
+        <h2 className="kp-kicker mb-4">Assignment</h2>
+        <AssignmentEditor
+          assignment={assignment}
+          roster={roster}
+          onChange={(a) => { setAssignment(a); markDirty(); }}
+        />
       </section>
 
       {/* ── AI Assistant ── */}

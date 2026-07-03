@@ -30,6 +30,8 @@ import {
 import { editTestWithAI, snipTestAsset, uploadTestAssets } from "../lib/aiGenerate";
 import { renderExhibit } from "../lib/exhibitPages";
 import { getRoster, type RosterUser } from "../lib/roster";
+import { subscribeTags, DEFAULT_TAGS } from "../lib/tags";
+import { TagSelect } from "../components/TagSelect";
 
 /* Review-and-edit surface for a test — the approval gate for AI-generated
  * drafts. Everything is editable: metadata, slides, and questions. Publish
@@ -48,7 +50,8 @@ export function AdminTestEditorPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [maxWrong, setMaxWrong] = useState(0);
-  const [tags, setTags] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagOptions, setTagOptions] = useState<string[]>(DEFAULT_TAGS);
   const [retakePolicy, setRetakePolicy] = useState<RetakePolicy>("untilPass");
   const [maxAttempts, setMaxAttempts] = useState(3);
   const [assignment, setAssignment] = useState<Assignment>(EMPTY_ASSIGNMENT);
@@ -94,7 +97,7 @@ export function AdminTestEditorPage() {
       setName(t.name);
       setDescription(t.description);
       setMaxWrong(t.maxWrongToPass);
-      setTags(t.tags.join(", "));
+      setTags(t.tags);
       setRetakePolicy(t.retakePolicy);
       setMaxAttempts(t.maxAttempts);
       setAssignment(t.assignment);
@@ -130,6 +133,8 @@ export function AdminTestEditorPage() {
 
   const markDirty = () => setDirty(true);
 
+  useEffect(() => subscribeTags(setTagOptions), []);
+
   async function refreshQuestions() {
     if (testId) setQuestions(await getQuestions(testId));
   }
@@ -141,7 +146,7 @@ export function AdminTestEditorPage() {
     retakePolicy,
     maxAttempts,
     assignment,
-    tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+    tags,
     slides,
   });
 
@@ -221,7 +226,11 @@ export function AdminTestEditorPage() {
                 className="focus-kp mt-1 w-full bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13.5px]"
               />
             </label>
-            <Field label="Tags (comma-separated)" value={tags} onChange={(v) => { setTags(v); markDirty(); }} />
+            <TagSelect
+              value={tags}
+              options={tagOptions}
+              onChange={(next) => { setTags(next); markDirty(); }}
+            />
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block">

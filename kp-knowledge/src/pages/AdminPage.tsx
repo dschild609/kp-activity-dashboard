@@ -18,6 +18,7 @@ import {
   updateTest,
 } from "../lib/knowledge";
 import { parseTestExcel } from "../lib/parseTestExcel";
+import { subscribeTags, addTag, removeTag } from "../lib/tags";
 import { generateTestFromDoc } from "../lib/aiGenerate";
 import { MAX_TOTAL_PAGES, renderExhibit } from "../lib/exhibitPages";
 import { seedForkliftTest } from "../lib/seed";
@@ -90,6 +91,88 @@ export function AdminPage() {
 
 /* ── Tests tab ───────────────────────────────────────────────────── */
 
+/* Manage the shared tag vocabulary — the list that feeds the test editor's
+ * tag dropdown and the Tests page filters. */
+function TagManager() {
+  const [tags, setTags] = useState<string[] | null>(null);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => subscribeTags(setTags), []);
+
+  async function add() {
+    const clean = draft.trim();
+    if (!clean) return;
+    if (tags?.some((t) => t.toLowerCase() === clean.toLowerCase())) { setDraft(""); return; }
+    setBusy(true); setErr(null);
+    try { await addTag(clean); setDraft(""); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function remove(tag: string) {
+    setBusy(true); setErr(null);
+    try { await removeTag(tag); }
+    catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="mb-8">
+      <h2 className="kp-kicker mb-4">Tags</h2>
+      <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
+        <p className="text-[13px] text-kp-text-muted mb-3">
+          Tags appear in the dropdown when editing a test, and as filters on the Tests page.
+          Removing a tag here leaves it on any test already using it.
+        </p>
+        {err && <NoticeBox tone="bad" className="mb-3">{err}</NoticeBox>}
+        <div className="flex flex-wrap gap-1.5 mb-3 min-h-[1.75rem]">
+          {tags === null ? (
+            <span className="text-[13px] text-kp-text-faint">Loading…</span>
+          ) : tags.length === 0 ? (
+            <span className="text-[13px] text-kp-text-faint">No tags yet — add one below.</span>
+          ) : (
+            tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1.5 px-2 py-1 text-[12.5px] font-semibold bg-kp-crimson-soft text-kp-crimson-soft-text border border-kp-crimson-soft rounded-lg"
+              >
+                {tag}
+                <button
+                  type="button"
+                  onClick={() => remove(tag)}
+                  disabled={busy}
+                  className="hover:text-kp-bad disabled:opacity-40"
+                  aria-label={`Remove ${tag}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+        <div className="flex gap-2 max-w-sm">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+            placeholder="New tag name…"
+            className="focus-kp flex-1 bg-kp-surface border border-kp-border rounded-lg px-3 py-2 text-[13.5px]"
+          />
+          <button
+            type="button"
+            onClick={add}
+            disabled={busy || !draft.trim()}
+            className="px-4 py-2 bg-kp-navy hover:bg-kp-navy-hover text-white text-[13px] font-semibold rounded-lg disabled:opacity-50"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TestsAdmin({ authed }: { authed: AuthState }) {
   const [tests, setTests] = useState<KnowledgeTest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +214,7 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
 
   return (
     <section>
+      <TagManager />
       <h2 className="kp-kicker mb-4">All Tests</h2>
       {error && <NoticeBox tone="bad" className="mb-4">{error}</NoticeBox>}
       {tests === null && <div className="text-[14px] text-kp-text-muted">Loading…</div>}

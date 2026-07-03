@@ -415,7 +415,7 @@ function SlideDeck({
   const last = index === slides.length - 1;
 
   return (
-    <main className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+    <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
       {preview && <PreviewBanner testId={test.id} />}
       <div className="mb-5">
         <h1 className="text-[24px] font-extrabold tracking-[-0.02em] text-kp-navy mb-1">

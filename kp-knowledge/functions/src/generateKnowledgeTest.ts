@@ -14,7 +14,7 @@ import * as admin from "firebase-admin";
 import Anthropic from "@anthropic-ai/sdk";
 import * as mammoth from "mammoth";
 import sharp from "sharp";
-import { randomUUID } from "crypto";
+import { ALLOWED_ORIGINS, uploadJpeg, verifyManager } from "./shared";
 
 if (admin.apps.length === 0) {
   admin.initializeApp();
@@ -26,48 +26,8 @@ const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 // fair, well-constructed quiz questions), and volume is a few runs a week.
 const GENERATION_MODEL = "claude-opus-4-8";
 
-const ALLOWED_ORIGINS = [
-  "http://localhost:5183",
-  "https://knowledge.kpshub.app",
-  "https://kp-knowledge.web.app",
-  "https://kp-knowledge.firebaseapp.com",
-];
-
-// Roles allowed to generate tests — mirrors canManageTests in the app.
-const MANAGER_ROLES = new Set([
-  "super_admin",
-  "operations_manager",
-  "ops_manager",
-]);
-
 const MAX_EXHIBITS = 5;
 const MAX_EXHIBIT_PAGES = 20; // across all exhibits
-
-interface AuthResult {
-  ok: boolean;
-  status: number;
-  error?: string;
-  email?: string;
-}
-
-async function verifyManager(authHeader: string | undefined): Promise<AuthResult> {
-  if (!authHeader?.startsWith("Bearer ")) {
-    return { ok: false, status: 401, error: "Missing Authorization header" };
-  }
-  try {
-    const decoded = await admin.auth().verifyIdToken(authHeader.slice(7));
-    const snap = await admin.firestore().doc(`users/${decoded.uid}`).get();
-    const data = snap.data() ?? {};
-    const role: string =
-      data.role_new ?? data.hubRole ?? (data.role === "admin" ? "super_admin" : "pending");
-    if (data.role === "admin" || MANAGER_ROLES.has(role)) {
-      return { ok: true, status: 200, email: decoded.email ?? decoded.uid };
-    }
-    return { ok: false, status: 403, error: "Not authorized to create tests" };
-  } catch {
-    return { ok: false, status: 401, error: "Invalid token" };
-  }
-}
 
 // Exhibits arrive pre-rendered from the client: each page as a base64 JPEG
 // (the browser rasterizes PDFs with pdf.js; plain images come as one page).
@@ -314,21 +274,7 @@ export const generateKnowledgeTest = onRequest(
     // URLs (unguessable UUID) — same mechanism the Firebase client SDK uses.
     const db = admin.firestore();
     const testRef = db.collection("knowledgeTests").doc();
-    const bucket = admin.storage().bucket();
     const assets: Array<{ name: string; page: number; url: string }> = [];
-
-    async function uploadJpeg(path: string, buffer: Buffer): Promise<string> {
-      const token = randomUUID();
-      const file = bucket.file(path);
-      await file.save(buffer, {
-        contentType: "image/jpeg",
-        metadata: { metadata: { firebaseStorageDownloadTokens: token } },
-      });
-      return (
-        `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
-        `${encodeURIComponent(path)}?alt=media&token=${token}`
-      );
-    }
 
     // pages[exhibitIdx][pageIdx] -> {url, buffer, width, height}
     const pages: Array<Array<{ url: string; buffer: Buffer; width: number; height: number }>> = [];

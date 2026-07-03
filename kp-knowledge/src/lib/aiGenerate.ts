@@ -3,6 +3,8 @@ import type { Exhibit } from "./exhibitPages";
 
 const GENERATE_URL =
   "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/generateKnowledgeTest";
+const UPLOAD_ASSET_URL =
+  "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/uploadKnowledgeAsset";
 
 export interface GenerateResult {
   testId: string;
@@ -46,4 +48,29 @@ export async function generateTestFromDoc(
     throw new Error(body.error ?? `Generation failed (HTTP ${resp.status})`);
   }
   return body as GenerateResult;
+}
+
+/* Adds a manually-uploaded image (or rasterized PDF pages) to a test's
+ * asset library so the slide workbench can place it on slides. */
+export async function uploadTestAssets(
+  testId: string,
+  exhibit: Exhibit
+): Promise<Array<{ name: string; page: number; url: string }>> {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+  const token = await user.getIdToken();
+
+  const resp = await fetch(UPLOAD_ASSET_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ testId, name: exhibit.name, pages: exhibit.pages }),
+  });
+  const body = await resp.json().catch(() => ({}));
+  if (!resp.ok || !body.ok) {
+    throw new Error(body.error ?? `Upload failed (HTTP ${resp.status})`);
+  }
+  return body.assets;
 }

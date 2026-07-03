@@ -19,6 +19,8 @@ import {
   updateQuestion,
   updateTest,
 } from "../lib/knowledge";
+import { uploadTestAssets } from "../lib/aiGenerate";
+import { renderExhibit } from "../lib/exhibitPages";
 
 /* Review-and-edit surface for a test — the approval gate for AI-generated
  * drafts. Everything is editable: metadata, slides, and questions. Publish
@@ -32,12 +34,14 @@ export function AdminTestEditorPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
 
-  // Local editable copies of the metadata + slides
+  // Local editable copies of the metadata + slides. Assets are local too so
+  // an upload can append without a reload clobbering unsaved slide edits.
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [maxWrong, setMaxWrong] = useState(0);
   const [tags, setTags] = useState("");
   const [slides, setSlides] = useState<KnowledgeSlide[]>([]);
+  const [assets, setAssets] = useState<KnowledgeAsset[]>([]);
   const [dirty, setDirty] = useState(false);
 
   const reload = useCallback(async () => {
@@ -52,6 +56,7 @@ export function AdminTestEditorPage() {
       setMaxWrong(t.maxWrongToPass);
       setTags(t.tags.join(", "));
       setSlides(t.slides);
+      setAssets(t.assets);
       setDirty(false);
     } catch (e) {
       setError((e as Error).message);
@@ -173,8 +178,10 @@ export function AdminTestEditorPage() {
       <section className="mb-10">
         <h2 className="kp-kicker mb-4">Slides ({slides.length})</h2>
         <SlideWorkbench
+          testId={testId}
           slides={slides}
-          assets={test.assets}
+          assets={assets}
+          onAssetsAdded={(added) => setAssets((prev) => [...prev, ...added])}
           onChange={(next) => {
             setSlides(next);
             markDirty();
@@ -345,17 +352,53 @@ function convertSlide(slide: KnowledgeSlide, kind: SlideKind): KnowledgeSlide {
 }
 
 function SlideWorkbench({
+  testId,
   slides,
   assets,
+  onAssetsAdded,
   onChange,
 }: {
+  testId: string;
   slides: KnowledgeSlide[];
   assets: KnowledgeAsset[];
+  onAssetsAdded: (added: KnowledgeAsset[]) => void;
   onChange: (next: KnowledgeSlide[]) => void;
 }) {
   const [selected, setSelected] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const index = Math.min(selected, Math.max(slides.length - 1, 0));
   const slide = slides[index];
+
+  async function handleUpload(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const exhibit = await renderExhibit(file);
+      const added = await uploadTestAssets(testId, exhibit);
+      onAssetsAdded(added);
+      // Drop the uploaded image straight onto the current slide
+      if (added.length > 0 && slide) {
+        const a = added[0];
+        onChange(
+          slides.map((s, j) =>
+            j === index
+              ? {
+                  ...s,
+                  kind: "image" as const,
+                  imageUrl: a.url,
+                  imageLabel: added.length > 1 ? `${a.name} — page ${a.page}` : a.name,
+                }
+              : s
+          )
+        );
+      }
+    } catch (e) {
+      setUploadError((e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const update = (next: KnowledgeSlide) =>
     onChange(slides.map((s, j) => (j === index ? next : s)));
@@ -469,15 +512,36 @@ function SlideWorkbench({
             }}
             className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[12.5px] max-w-[220px]"
             disabled={assets.length === 0}
-            title={assets.length === 0 ? "This test has no uploaded exhibit images" : undefined}
+            title={assets.length === 0 ? "Upload an image to get started" : undefined}
           >
-            <option value="">{assets.length === 0 ? "No exhibits uploaded" : "None"}</option>
+            <option value="">{assets.length === 0 ? "No images yet" : "None"}</option>
             {assets.map((a) => (
               <option key={a.url} value={a.url}>
                 {a.name} — page {a.page}
               </option>
             ))}
           </select>
+          <label
+            className={`px-2.5 py-1.5 text-[12.5px] font-semibold border rounded-lg transition-colors ${
+              uploading
+                ? "opacity-50 cursor-wait border-kp-border text-kp-text-faint"
+                : "cursor-pointer text-kp-text-muted border-kp-border hover:bg-kp-surface-alt hover:text-kp-navy"
+            }`}
+            title="Upload an image or PDF to this test's library"
+          >
+            {uploading ? "Uploading…" : "⬆ Upload…"}
+            <input
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.webp"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleUpload(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
 
           <div className="ml-auto flex gap-2">
             <SmallButton onClick={() => moveSlide(-1)} disabled={index === 0}>← Move</SmallButton>
@@ -506,6 +570,11 @@ function SlideWorkbench({
 
         <SlideView slide={slide} sectionNumber={sectionNumberAt(slides, index)} onChange={update} />
 
+        {uploadError && (
+          <div className="mt-3 text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-3">
+            {uploadError}
+          </div>
+        )}
         <p className="mt-2 text-[12px] text-kp-text-faint">
           Click any text on the slide to edit it · hover a row for reorder/remove controls ·
           Slide {index + 1} of {slides.length}

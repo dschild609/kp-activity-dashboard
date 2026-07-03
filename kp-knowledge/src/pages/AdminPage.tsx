@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
-import { canManageTests, canViewAllResults } from "../types/roles";
 import type { KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
 import {
   createTest,
@@ -24,8 +23,8 @@ export function AdminPage() {
   const authed = useOutletContext<AuthState>();
   const [tab, setTab] = useState<Tab>("tests");
 
-  const manage = canManageTests(authed.role);
-  const viewResults = canViewAllResults(authed.role);
+  const manage = authed.canManage;
+  const viewResults = authed.canViewResults;
 
   if (!manage && !viewResults) {
     return (

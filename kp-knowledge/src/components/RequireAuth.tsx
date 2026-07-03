@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { useAuth, type AuthState } from "../hooks/useAuth";
-import { isAuthorizedRole } from "../types/roles";
 import { LoginScreen } from "./LoginScreen";
 import { AccessDenied } from "./AccessDenied";
 
@@ -10,11 +9,11 @@ interface RequireAuthProps {
 
 export function RequireAuth({ children }: RequireAuthProps) {
   const authState = useAuth();
-  const { user, role, loading, error, signIn, signOut } = authState;
+  const { user, canTake, loading, error, signIn, signOut } = authState;
 
   if (loading) return <LoadingSplash />;
   if (!user) return <LoginScreen onSignIn={signIn} error={error} signingIn={false} />;
-  if (!isAuthorizedRole(role)) return <AccessDenied user={user} onSignOut={signOut} />;
+  if (!canTake) return <AccessDenied user={user} onSignOut={signOut} />;
   return <>{children(authState)}</>;
 }
 

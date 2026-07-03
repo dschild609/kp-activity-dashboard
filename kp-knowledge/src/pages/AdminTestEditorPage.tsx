@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
-import { canManageTests } from "../types/roles";
 import {
   makeSlide,
   type AnswerKey,
@@ -33,7 +32,7 @@ import { renderExhibit } from "../lib/exhibitPages";
  * flips the test live for employees. */
 export function AdminTestEditorPage() {
   const { testId } = useParams<{ testId: string }>();
-  const { role } = useOutletContext<AuthState>();
+  const { canManage } = useOutletContext<AuthState>();
 
   const [test, setTest] = useState<KnowledgeTest | null>(null);
   const [questions, setQuestions] = useState<KnowledgeQuestion[]>([]);
@@ -97,7 +96,7 @@ export function AdminTestEditorPage() {
   }, [testId]);
   useEffect(() => { void reload(); }, [reload]);
 
-  if (!canManageTests(role)) {
+  if (!canManage) {
     return (
       <main className="max-w-4xl mx-auto px-6 py-16 text-center text-[14px] text-kp-text-muted">
         You don't have access to the test editor.

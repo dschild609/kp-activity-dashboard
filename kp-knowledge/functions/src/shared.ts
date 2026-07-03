@@ -30,7 +30,9 @@ export const ALLOWED_ORIGINS = [
 // src/lib/exhibitPages.ts — keep in sync).
 export const MAX_PAGES = 20;
 
-// Roles allowed to manage tests — mirrors canManageTests in the app.
+// Roles allowed to manage tests by role alone — mirrors canManageByRole in
+// the app (src/types/roles.ts). The per-user canManageKnowledgeTests flag
+// (admin console "Can manage tests") grants the same ability.
 const MANAGER_ROLES = new Set([
   "super_admin",
   "operations_manager",
@@ -54,7 +56,11 @@ export async function verifyManager(authHeader: string | undefined): Promise<Aut
     const data = snap.data() ?? {};
     const role: string =
       data.role_new ?? data.hubRole ?? (data.role === "admin" ? "super_admin" : "pending");
-    if (data.role === "admin" || MANAGER_ROLES.has(role)) {
+    if (
+      data.role === "admin" ||
+      MANAGER_ROLES.has(role) ||
+      data.canManageKnowledgeTests === true
+    ) {
       return { ok: true, status: 200, email: decoded.email ?? decoded.uid };
     }
     return { ok: false, status: 403, error: "Not authorized to manage tests" };

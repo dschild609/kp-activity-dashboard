@@ -1,11 +1,10 @@
 import { NavLink } from "react-router-dom";
 import type { User } from "firebase/auth";
-import { isKnowledgeAdmin, type UserRole } from "../types/roles";
 import { useTheme } from "../hooks/useTheme";
 
 interface TopNavProps {
   user: User | null;
-  role: UserRole;
+  canAdmin: boolean;
   onSignOut: () => void;
 }
 
@@ -13,23 +12,23 @@ interface NavDestination {
   label: string;
   to: string;
   end?: boolean;
-  visible: (role: UserRole) => boolean;
+  visible: (canAdmin: boolean) => boolean;
 }
 
 const NAV_DESTINATIONS: NavDestination[] = [
   { label: "Tests", to: "/", end: true, visible: () => true },
   { label: "My Results", to: "/results", visible: () => true },
-  { label: "Admin", to: "/admin", visible: isKnowledgeAdmin },
+  { label: "Admin", to: "/admin", visible: (canAdmin) => canAdmin },
 ];
 
 const TAB_ACTIVE =
   "font-bold bg-kp-crimson-soft text-kp-crimson-soft-text dark:text-white shadow-[inset_0_0_0_1px_rgba(148,0,42,.3)] dark:shadow-[inset_0_0_0_1px_rgba(255,59,92,.45)] rounded-[8px]";
 const TAB_INACTIVE = "font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-[8px]";
 
-export function TopNav({ user, role, onSignOut }: TopNavProps) {
+export function TopNav({ user, canAdmin, onSignOut }: TopNavProps) {
   const { toggle, resolved } = useTheme();
 
-  const visibleDestinations = NAV_DESTINATIONS.filter((d) => d.visible(role));
+  const visibleDestinations = NAV_DESTINATIONS.filter((d) => d.visible(canAdmin));
 
   return (
     <header className="sticky top-0 z-40 bg-kp-chrome border-b border-kp-chrome-border">

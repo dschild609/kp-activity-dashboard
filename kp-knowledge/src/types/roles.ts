@@ -1,33 +1,25 @@
-export const HUB_ROLES = [
-  "super_admin",
-  "area_manager",
-  "ops_manager",
-  "branch_manager",
-  "recruiter",
-] as const;
+/* Role vocabulary comes from the admin console (role_new on /users, with
+ * legacy hubRole fallback) — kp-shared/appAccess.ts is the source of truth
+ * for the full list. This app only distinguishes a few tiers. */
+export type UserRole = string | null;
 
-export type HubRole = (typeof HUB_ROLES)[number];
-export type UserRole = HubRole | "pending" | null;
-
-export function isAuthorizedRole(role: UserRole): boolean {
-  return role !== null && role !== "pending";
+export function isSuperAdmin(role: UserRole): boolean {
+  return role === "super_admin";
 }
 
-/* Knowledge admin = manage tests/questions, view all results, reset attempts.
- * Managers get results visibility without test-editing rights. */
-export function canManageTests(role: UserRole): boolean {
-  return role === "super_admin" || role === "ops_manager";
+/* Manager tier that may create/edit/remove tests by role alone (the
+ * per-user canManageKnowledgeTests flag grants the same ability). Mirrors
+ * MANAGER_ROLES in functions/src/shared.ts — keep in sync. */
+export function canManageByRole(role: UserRole): boolean {
+  return role === "super_admin" || role === "operations_manager" || role === "ops_manager";
 }
 
-export function canViewAllResults(role: UserRole): boolean {
+/* Roles that see everyone's results even without manage rights */
+export function canViewResultsByRole(role: UserRole): boolean {
   return (
-    role === "super_admin" ||
-    role === "ops_manager" ||
+    canManageByRole(role) ||
     role === "area_manager" ||
-    role === "branch_manager"
+    role === "branch_manager" ||
+    role === "recruiting_manager"
   );
-}
-
-export function isKnowledgeAdmin(role: UserRole): boolean {
-  return canManageTests(role) || canViewAllResults(role);
 }

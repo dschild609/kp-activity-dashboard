@@ -9,11 +9,19 @@ import {
   doc, getDoc, onSnapshot, setDoc, updateDoc, serverTimestamp,
 } from "firebase/firestore";
 import { auth, db, googleProvider } from "../lib/firebase";
-import type { UserRole } from "../types/roles";
+import { canManageByRole, canViewResultsByRole, type UserRole } from "../types/roles";
 
 export interface AuthState {
   user: User | null;
   role: UserRole;
+  /* App access granted from the admin console (appAccess.knowledge) —
+   * gates taking tests. Managers/admins always pass. */
+  canTake: boolean;
+  /* Create/edit/remove tests: legacy admin, super_admin/ops role, or the
+   * per-user "Can manage tests" flag from the admin console. */
+  canManage: boolean;
+  /* See everyone's results: managers plus the results-visibility roles. */
+  canViewResults: boolean;
   loading: boolean;
   error: string | null;
   signIn: () => Promise<void>;
@@ -31,31 +39,23 @@ interface UserDocData {
   email: string;
   displayName: string | null;
   photoURL: string | null;
-  role: string | null;
-  hubRole: UserRole;
+  role: string | null; // legacy dashboard-admin flag ("admin")
+  role_new?: string | null; // unified role written by the admin console
+  hubRole?: string | null; // legacy role field
+  appAccess?: Record<string, boolean>;
+  canManageKnowledgeTests?: boolean;
 }
 
 async function ensureUserDoc(u: User): Promise<void> {
   const ref = doc(db, "users", u.uid);
   const snap = await getDoc(ref);
-  if (snap.exists()) {
-    const data = snap.data();
-    if (data.hubRole === undefined) {
-      const autoRole = data.role === "admin" ? "super_admin" : null;
-      await updateDoc(ref, { hubRole: autoRole, branch: data.branch ?? null });
-    } else if (data.hubRole === null && data.role === "admin") {
-      await updateDoc(ref, { hubRole: "super_admin" });
-    }
-    return;
-  }
-
+  if (snap.exists()) return;
   await setDoc(ref, {
     email: u.email ?? "",
     displayName: u.displayName ?? null,
     photoURL: u.photoURL ?? null,
     role: null,
-    hubRole: null,
-    branch: null,
+    role_new: null,
     createdAt: serverTimestamp(),
   });
 }
@@ -130,6 +130,9 @@ export function useAuth(): AuthState {
     return {
       user: DEV_MOCK_USER,
       role: devOverrides.role,
+      canTake: true,
+      canManage: true,
+      canViewResults: true,
       loading: false,
       error: null,
       signIn: noop,
@@ -137,9 +140,16 @@ export function useAuth(): AuthState {
     };
   }
 
+  // Same resolution chain as the server's verifyManager: role_new (what the
+  // admin console writes) → legacy hubRole → legacy dashboard-admin flag.
   const role: UserRole = user
-    ? (userDoc?.hubRole ?? (userDoc?.role === "admin" ? "super_admin" : "pending"))
+    ? (userDoc?.role_new ?? userDoc?.hubRole ?? (userDoc?.role === "admin" ? "super_admin" : "pending"))
     : null;
+  const isLegacyAdmin = userDoc?.role === "admin";
+  const canManage =
+    isLegacyAdmin || canManageByRole(role) || userDoc?.canManageKnowledgeTests === true;
+  const canTake = canManage || userDoc?.appAccess?.knowledge === true;
+  const canViewResults = canManage || canViewResultsByRole(role);
 
-  return { user, role, loading, error, signIn, signOut };
+  return { user, role, canTake, canManage, canViewResults, loading, error, signIn, signOut };
 }

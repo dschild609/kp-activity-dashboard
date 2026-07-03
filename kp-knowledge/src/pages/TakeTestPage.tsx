@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
-import { canManageTests } from "../types/roles";
 import type { AnswerKey, KnowledgeQuestion, KnowledgeTest } from "../types/knowledge";
 import {
   attemptGate,
@@ -60,7 +59,7 @@ function slideProgressKey(uid: string, testId: string): string {
 
 export function TakeTestPage({ preview = false }: { preview?: boolean }) {
   const { testId } = useParams<{ testId: string }>();
-  const { user, role } = useOutletContext<AuthState>();
+  const { user, canManage } = useOutletContext<AuthState>();
   const navigate = useNavigate();
 
   const [state, setState] = useState<PageState>({ phase: "loading" });
@@ -72,7 +71,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
     (async () => {
       try {
         if (preview) {
-          if (!canManageTests(role)) {
+          if (!canManage) {
             setState({ phase: "error", message: "Preview is admin-only." });
             return;
           }
@@ -114,7 +113,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
         setState({ phase: "error", message: (e as Error).message });
       }
     })();
-  }, [testId, user, preview, role]);
+  }, [testId, user, preview, canManage]);
 
   const unanswered = useMemo(() => {
     if (state.phase !== "taking") return 0;

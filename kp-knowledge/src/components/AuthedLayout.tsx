@@ -9,7 +9,7 @@ export function AuthedLayout() {
         <div className="min-h-screen bg-kp-bg">
           <TopNav
             user={authed.user}
-            role={authed.role}
+            canAdmin={authed.canManage || authed.canViewResults}
             onSignOut={authed.signOut}
           />
           <Outlet context={authed} />

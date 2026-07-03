@@ -58,7 +58,7 @@ const TEST_SCHEMA = {
         properties: {
           kind: {
             type: "string",
-            enum: ["title", "section", "agenda", "bullets", "steps", "image"],
+            enum: ["title", "section", "agenda", "bullets", "steps", "image", "imageWide"],
             description: "Which template layout this slide uses",
           },
           kicker: {
@@ -179,7 +179,8 @@ CHOOSING LAYOUTS: you decide the layout for every slide, and the decision should
 - "section": a divider that opens each major section of a longer deck. kicker = "SECTION ONE", "SECTION TWO", ... in sequence; title = the section name; subtitle = one sentence on what the section covers. Use sections only when the material has 2+ genuinely distinct parts; skip them for short single-topic decks.
 - "bullets": the workhorse content slide. columns = 1 column normally; 2 columns when the content pairs naturally (do/don't, what you'll do/who to ask, requirements/exceptions). Each column has a heading and 3-6 bullets. Write bullets as "Lead — description" when there's a natural lead-in term (it renders bold). No column heading repetition of the slide title.
 - "steps": a numbered process with 2-4 sequential steps (apply → orientation → assignment → check-in). Each step: short title + one-two sentence description. Use for any procedure with a clear order.
-- "image": a screenshot slide — the exhibit page fills the left half; kicker/title on the right with a short body paragraph explaining what the viewer is looking at, and optionally a note (a short callout, e.g. a common mistake or where to sign). ONLY image slides carry an "image" reference.
+- "image": a screenshot slide — the exhibit image fills the left half; kicker/title on the right with a short body paragraph explaining what the viewer is looking at, and optionally a note (a short callout, e.g. a common mistake or where to sign). Use when the image is roughly page-shaped (taller than wide, or square).
+- "imageWide": the horizontal screenshot slide — the image spans the top ~60% of the slide with the title/body/note in a band below. Use when the image (usually a crop) is WIDE and SHORT — a single form row, a signature line, a table header. A wide crop on a side-by-side "image" slide wastes most of the pane; put it on "imageWide" instead. Only "image" and "imageWide" slides carry an "image" reference.
 
 Layout discipline: every slide sets exactly the fields its kind needs and null for the rest. Don't pad the deck — no "questions?" slide, no closing slide, no bullet that restates the slide title.
 
@@ -333,7 +334,7 @@ export const generateKnowledgeTest = onRequest(
     // Generate slides + quiz with Claude
     const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
     interface GeneratedSlide {
-      kind: "title" | "section" | "agenda" | "bullets" | "steps" | "image";
+      kind: "title" | "section" | "agenda" | "bullets" | "steps" | "image" | "imageWide";
       kicker: string | null;
       title: string;
       subtitle: string | null;
@@ -434,7 +435,8 @@ export const generateKnowledgeTest = onRequest(
         }
       }
       slides.push({
-        kind: s.kind,
+        kind: s.kind === "imageWide" ? "image" : s.kind,
+        imagePosition: s.kind === "imageWide" ? "top" : "left",
         kicker: s.kicker ?? null,
         title: s.title,
         subtitle: s.subtitle ?? null,

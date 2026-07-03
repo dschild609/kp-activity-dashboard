@@ -38,8 +38,10 @@ export interface KnowledgeSlide {
    * from the test's assets */
   imageUrl?: string | null;
   imageLabel?: string | null;
-  /* Which half of an image slide holds the screenshot (default left) */
-  imagePosition?: "left" | "right";
+  /* Where the screenshot sits on an image slide: left/right half, or
+   * "top" for the horizontal variant (image across the top, text below —
+   * best for wide snips like a single form row). Default left. */
+  imagePosition?: "left" | "right" | "top";
 }
 
 /* Older tests stored slides as {title, bullets: string[]} — normalize to a

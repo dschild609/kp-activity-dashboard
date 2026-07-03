@@ -270,16 +270,31 @@ export function AdminTestEditorPage() {
 
 /* ── Slide editor card ───────────────────────────────────────────── */
 
-const SLIDE_KINDS: Array<{ kind: SlideKind; label: string }> = [
-  { kind: "title", label: "Title (cover)" },
-  { kind: "section", label: "Section divider" },
-  { kind: "agenda", label: "Agenda (numbered list)" },
-  { kind: "bullets", label: "Bullets (1-2 columns)" },
-  { kind: "steps", label: "Process steps" },
-  { kind: "image", label: "Screenshot slide" },
+/* Layout options offered in the menus. The two screenshot variants share
+ * kind "image" and differ by imagePosition. */
+const SLIDE_LAYOUTS: Array<{
+  value: string;
+  kind: SlideKind;
+  imagePosition?: "left" | "top";
+  label: string;
+}> = [
+  { value: "title", kind: "title", label: "Title (cover)" },
+  { value: "section", kind: "section", label: "Section divider" },
+  { value: "agenda", kind: "agenda", label: "Agenda (numbered list)" },
+  { value: "bullets", kind: "bullets", label: "Bullets (1-2 columns)" },
+  { value: "steps", kind: "steps", label: "Process steps" },
+  { value: "image", kind: "image", imagePosition: "left", label: "Screenshot — text beside" },
+  { value: "image-top", kind: "image", imagePosition: "top", label: "Screenshot — text below" },
 ];
 
-function newSlide(kind: SlideKind): KnowledgeSlide {
+function layoutValueOf(slide: KnowledgeSlide): string {
+  if (slide.kind === "image") return slide.imagePosition === "top" ? "image-top" : "image";
+  return slide.kind;
+}
+
+function newSlide(layoutValue: string): KnowledgeSlide {
+  const layout = SLIDE_LAYOUTS.find((l) => l.value === layoutValue) ?? SLIDE_LAYOUTS[3];
+  const kind = layout.kind;
   return {
     kind,
     kicker: null,
@@ -292,6 +307,7 @@ function newSlide(kind: SlideKind): KnowledgeSlide {
     note: null,
     imageUrl: null,
     imageLabel: null,
+    imagePosition: layout.imagePosition,
   };
 }
 
@@ -442,14 +458,14 @@ function SlideWorkbench({
           value=""
           onChange={(e) => {
             if (!e.target.value) return;
-            onChange([newSlide(e.target.value as SlideKind)]);
+            onChange([newSlide(e.target.value)]);
             setSelected(0);
           }}
           className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold text-kp-text-muted"
         >
           <option value="">+ Add slide…</option>
-          {SLIDE_KINDS.map((k) => (
-            <option key={k.kind} value={k.kind}>{k.label}</option>
+          {SLIDE_LAYOUTS.map((l) => (
+            <option key={l.value} value={l.value}>{l.label}</option>
           ))}
         </select>
       </div>
@@ -488,15 +504,15 @@ function SlideWorkbench({
           onChange={(e) => {
             if (!e.target.value) return;
             const next = [...slides];
-            next.splice(index + 1, 0, newSlide(e.target.value as SlideKind));
+            next.splice(index + 1, 0, newSlide(e.target.value));
             onChange(next);
             setSelected(index + 1);
           }}
           className="focus-kp w-full bg-kp-surface border border-kp-border rounded-lg px-1.5 py-1.5 text-[11.5px] font-semibold text-kp-text-muted"
         >
           <option value="">+ Add slide…</option>
-          {SLIDE_KINDS.map((k) => (
-            <option key={k.kind} value={k.kind}>{k.label}</option>
+          {SLIDE_LAYOUTS.map((l) => (
+            <option key={l.value} value={l.value}>{l.label}</option>
           ))}
         </select>
       </div>
@@ -508,12 +524,21 @@ function SlideWorkbench({
             Layout
           </label>
           <select
-            value={slide.kind}
-            onChange={(e) => update(convertSlide(slide, e.target.value as SlideKind))}
+            value={layoutValueOf(slide)}
+            onChange={(e) => {
+              const layout = SLIDE_LAYOUTS.find((l) => l.value === e.target.value);
+              if (!layout) return;
+              const converted = convertSlide(slide, layout.kind);
+              update(
+                layout.kind === "image"
+                  ? { ...converted, imagePosition: layout.imagePosition ?? "left" }
+                  : converted
+              );
+            }}
             className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[12.5px] font-semibold"
           >
-            {SLIDE_KINDS.map((k) => (
-              <option key={k.kind} value={k.kind}>{k.label}</option>
+            {SLIDE_LAYOUTS.map((l) => (
+              <option key={l.value} value={l.value}>{l.label}</option>
             ))}
           </select>
 

@@ -424,9 +424,17 @@ function StepsSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
   );
 }
 
+const IMAGE_POSITIONS = ["left", "right", "top"] as const;
+
 function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) {
   const c = edit?.onChange;
-  const imageRight = slide.imagePosition === "right";
+  const position = slide.imagePosition ?? "left";
+  const imageRight = position === "right";
+  const imageTop = position === "top";
+  const cyclePosition = () => {
+    const next = IMAGE_POSITIONS[(IMAGE_POSITIONS.indexOf(position) + 1) % IMAGE_POSITIONS.length];
+    c?.({ ...slide, imagePosition: next });
+  };
   const imagePane = (
     <div className="relative flex items-center justify-center" style={{ background: "#e7e5dd" }}>
       {slide.imageUrl ? (
@@ -460,12 +468,12 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
             <div className="absolute top-2 left-2 flex gap-1.5">
               <button
                 type="button"
-                onClick={() => c?.({ ...slide, imagePosition: imageRight ? "left" : "right" })}
+                onClick={cyclePosition}
                 className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
                 style={{ color: INK }}
-                title="Swap image side"
+                title="Cycle image position: left / right / top"
               >
-                ⇄ side
+                ⇄ {position}
               </button>
               {edit.onSnip && (
                 <button
@@ -526,6 +534,46 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
       )}
     </div>
   );
+  if (imageTop) {
+    // Horizontal variant: screenshot across the top, lower-third text band —
+    // best for wide crops (a form row, a signature line, a table header).
+    return (
+      <div className="absolute inset-0 grid" style={{ gridTemplateRows: "58% 42%" }}>
+        {imagePane}
+        <div className="px-10 py-5 grid gap-8 overflow-y-auto" style={{ gridTemplateColumns: "38% 1fr" }}>
+          <div>
+            <Kicker text={slide.kicker} color={CRIMSON} edit={edit} commit={(v) => c?.({ ...slide, kicker: v })} />
+            <h2 className="font-extrabold leading-tight tracking-[-0.02em]" style={{ fontSize: 24, color: INK }}>
+              <Txt value={slide.title} placeholder="Title" onCommit={c ? (v) => c({ ...slide, title: v }) : undefined} />
+            </h2>
+            {slide.imageLabel && (
+              <div className="mt-2.5 font-mono uppercase" style={{ fontSize: 10, letterSpacing: "0.12em", color: "#98a1a8" }}>
+                {slide.imageLabel}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col justify-center">
+            <p className="text-[14px] leading-relaxed" style={{ color: MUTED }}>
+              <Txt
+                value={slide.body ?? ""}
+                placeholder={edit ? "Body paragraph" : ""}
+                onCommit={c ? (v) => c({ ...slide, body: v || null }) : undefined}
+              />
+            </p>
+            {(slide.note || edit) && (
+              <div className="mt-3 pl-3.5 text-[12.5px] leading-relaxed" style={{ borderLeft: `3px solid ${CRIMSON}`, color: MUTED }}>
+                <Txt
+                  value={slide.note ?? ""}
+                  placeholder={edit ? "Callout note (optional)" : ""}
+                  onCommit={c ? (v) => c({ ...slide, note: v || null }) : undefined}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="absolute inset-0 grid" style={{ gridTemplateColumns: imageRight ? "54% 46%" : "46% 54%" }}>
       {imageRight ? (

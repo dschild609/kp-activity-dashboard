@@ -1,8 +1,5 @@
-import { auth } from "./firebase";
 import type { Assignment } from "../types/knowledge";
-
-const ROSTER_URL =
-  "https://us-central1-client-health-dashboard-4826e.cloudfunctions.net/getKnowledgeRoster";
+import { callManagerFn } from "./managerApi";
 
 export interface RosterUser {
   uid: string;
@@ -16,17 +13,8 @@ export interface RosterUser {
 /* The staff roster (from the admin-gated Cloud Function) — used for the
  * assignment person-picker and the completion view. */
 export async function getRoster(): Promise<RosterUser[]> {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-  const resp = await fetch(ROSTER_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: "{}",
-  });
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok || !body.ok) throw new Error(body.error ?? `Roster failed (HTTP ${resp.status})`);
-  return body.users as RosterUser[];
+  const { users } = await callManagerFn<{ users: RosterUser[] }>("getKnowledgeRoster");
+  return users;
 }
 
 /* The staff who a test's assignment resolves to — the union of everyone /

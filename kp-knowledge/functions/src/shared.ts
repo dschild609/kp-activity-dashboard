@@ -91,6 +91,44 @@ export function managerEndpoint(
   });
 }
 
+/* ── Staff roster ────────────────────────────────────────────────── */
+
+// Legacy role spellings → canonical, so role-targeting matches every doc.
+export const ROLE_ALIASES: Record<string, string> = { ops_manager: "operations_manager" };
+
+export interface RosterMember {
+  uid: string;
+  name: string;
+  email: string;
+  branch: string | null;
+  role: string | null;
+  /* Can take KP Knowledge tests (appAccess.knowledge or legacy admin). */
+  knowledge: boolean;
+}
+
+/* The staff roster from /users with canonical roles + KP Knowledge access.
+ * Shared by getKnowledgeRoster (assignment UI) and knowledgeReminders so
+ * "who is a taker and what is their role" is defined once. */
+export async function loadRoster(db: admin.firestore.Firestore): Promise<RosterMember[]> {
+  const snap = await db.collection("users").get();
+  return snap.docs
+    .map((d) => {
+      const f = d.data();
+      const rawRole: string | null =
+        f.role_new ?? f.hubRole ?? (f.role === "admin" ? "super_admin" : null);
+      const role = rawRole ? ROLE_ALIASES[rawRole] ?? rawRole : null;
+      return {
+        uid: d.id,
+        name: (f.displayName as string) ?? (f.email as string) ?? "Unknown",
+        email: (f.email as string) ?? "",
+        branch: (f.branch as string) ?? null,
+        role,
+        knowledge: f.appAccess?.knowledge === true || f.role === "admin",
+      };
+    })
+    .filter((u) => u.email);
+}
+
 /* Save a JPEG to Storage with a Firebase-style download token and return
  * the tokened URL (same mechanism the client SDK uses). */
 export async function uploadJpeg(path: string, buffer: Buffer): Promise<string> {

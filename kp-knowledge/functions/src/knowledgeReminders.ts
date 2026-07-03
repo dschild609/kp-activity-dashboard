@@ -16,14 +16,12 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions";
 import * as admin from "firebase-admin";
-import { managerEndpoint } from "./shared";
-import { SENDGRID_API_KEY, APP_URL, renderEmail, sendEmail, type EmailTone } from "./email";
+import { managerEndpoint, loadRoster } from "./shared";
+import { SENDGRID_API_KEY, APP_URL, renderEmail, sendEmail } from "./email";
 
 const DUE_SOON_DAYS = 3; // "due soon" window (inclusive of today)
 const OVERDUE_RENAG_DAYS = 7; // re-send an overdue reminder at most weekly
 const NOTIFS = "knowledgeNotifications";
-
-const ROLE_ALIASES: Record<string, string> = { ops_manager: "operations_manager" };
 
 type ReminderKind = "assigned" | "dueSoon" | "overdue";
 
@@ -62,7 +60,11 @@ interface Planned {
   nextState: NotifState & { updatedAt: admin.firestore.FieldValue };
 }
 
-/* Today's date in KP's timezone as "YYYY-MM-DD" (en-CA yields that shape).
+/* Date helpers below mirror the client's roster.ts (todayIso/daysUntil/
+ * formatDue) but pin America/Chicago server-side where the client uses
+ * browser-local time — keep the two in sync if the semantics change.
+ *
+ * Today's date in KP's timezone as "YYYY-MM-DD" (en-CA yields that shape).
  * The schedule runs at 8am CT, so "today" must be the Central date. */
 function chicagoToday(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -109,26 +111,13 @@ function resolveAssigned(a: Assignment, takers: Taker[]): Taker[] {
 
 /* ── Data loads ─────────────────────────────────────────────────── */
 
+/** The staff who can take tests — the shared roster filtered to KP Knowledge
+ *  access. (resolveAssigned only ever targets takers.) */
 async function loadTakers(db: admin.firestore.Firestore): Promise<Taker[]> {
-  const snap = await db.collection("users").get();
-  return snap.docs
-    .map((d) => {
-      const f = d.data();
-      const rawRole: string | null =
-        f.role_new ?? f.hubRole ?? (f.role === "admin" ? "super_admin" : null);
-      const role = rawRole ? ROLE_ALIASES[rawRole] ?? rawRole : null;
-      const canTake = f.appAccess?.knowledge === true || f.role === "admin";
-      return {
-        uid: d.id,
-        name: (f.displayName as string) ?? (f.email as string) ?? "there",
-        email: (f.email as string) ?? "",
-        branch: (f.branch as string) ?? null,
-        role,
-        canTake,
-      };
-    })
-    .filter((u) => u.email && u.canTake)
-    .map(({ canTake: _canTake, ...u }) => u);
+  const roster = await loadRoster(db);
+  return roster
+    .filter((u) => u.knowledge)
+    .map((u) => ({ uid: u.uid, name: u.name, email: u.email, branch: u.branch, role: u.role }));
 }
 
 async function loadAssignedTests(
@@ -145,9 +134,15 @@ async function loadAssignedTests(
   return out;
 }
 
-/** uid+testId keys of everyone who has PASSED a test (they're done — no nag). */
+/** uid+testId keys of everyone who has PASSED a test (they're done — no nag).
+ *  Projects to just the two key fields so a growing attempts collection
+ *  doesn't return full result bodies. */
 async function loadPassed(db: admin.firestore.Firestore): Promise<Set<string>> {
-  const snap = await db.collection("knowledgeAttempts").where("passed", "==", true).get();
+  const snap = await db
+    .collection("knowledgeAttempts")
+    .where("passed", "==", true)
+    .select("testId", "uid")
+    .get();
   const set = new Set<string>();
   for (const d of snap.docs) set.add(`${d.data().testId}__${d.data().uid}`);
   return set;
@@ -241,8 +236,8 @@ async function computePlan(db: admin.firestore.Firestore, today: string): Promis
 function emailFor(p: Planned, today: string): { subject: string; html: string } {
   const first = p.name.split(" ")[0] || "there";
   const bold = `<strong>${p.testName.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</strong>`;
+  const dueTxt = p.dueDate ? fmtDue(p.dueDate) : "";
   if (p.kind === "overdue") {
-    const dueTxt = p.dueDate ? fmtDue(p.dueDate) : "";
     return {
       subject: `Overdue: ${p.testName}`,
       html: renderEmail({
@@ -257,19 +252,19 @@ function emailFor(p: Planned, today: string): { subject: string; html: string } 
     const d = daysBetween(today, p.dueDate);
     const when = d === 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`;
     return {
-      subject: `Reminder: ${p.testName} is due ${fmtDue(p.dueDate)}`,
+      subject: `Reminder: ${p.testName} is due ${dueTxt}`,
       html: renderEmail({
         tone: "warn",
         heading: `Training due ${when}`,
         bodyLines: [`Hi ${first},`, `A reminder that ${bold} is due ${when}. It only takes a few minutes — please complete it before the deadline.`],
-        dueLine: `Due ${fmtDue(p.dueDate)}`,
+        dueLine: `Due ${dueTxt}`,
       }),
     };
   }
   // assigned
-  const dueLine = p.dueDate ? `Due ${fmtDue(p.dueDate)}` : null;
+  const dueLine = p.dueDate ? `Due ${dueTxt}` : null;
   const closing = p.dueDate
-    ? `Please complete it by ${fmtDue(p.dueDate)}.`
+    ? `Please complete it by ${dueTxt}.`
     : `Please complete it when you have a few minutes.`;
   return {
     subject: `You've been assigned: ${p.testName}`,
@@ -362,7 +357,7 @@ export const runKnowledgeReminders = managerEndpoint(
             {
               dueDate: test.assignment.dueDate ?? null,
               assignedAt: today,
-              seeded: true,
+              seeded: true, // audit-only marker; nothing reads it
               updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             },
             { merge: true }

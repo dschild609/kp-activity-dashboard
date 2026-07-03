@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "client-health-dashboard-4826e"
-  }
+  },
+  "targets": {
+    "client-health-dashboard-4826e": {
+      "hosting": {
+        "knowledge": [
+          "kp-knowledge"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

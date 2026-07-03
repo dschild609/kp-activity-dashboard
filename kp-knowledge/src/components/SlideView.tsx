@@ -532,8 +532,11 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
       )}
     </>
   );
+  // Source caption (e.g. "fw4.pdf — page 1 (detail)") is an editor-only
+  // reference — hidden from employees and the preview so trainees never see
+  // raw filenames. Only rendered when editing.
   const label = (compact: boolean) =>
-    slide.imageLabel && (
+    edit && slide.imageLabel && (
       <div
         className={`${compact ? "mt-2.5" : "mt-5"} font-mono uppercase`}
         style={{ fontSize: compact ? 10 : 10.5, letterSpacing: "0.12em", color: "#98a1a8" }}

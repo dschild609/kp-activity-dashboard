@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
-import type { AnswerKey, KnowledgeQuestion, KnowledgeTest } from "../types/knowledge";
+import type { AnswerKey, KnowledgeQuestion, KnowledgeSlide, KnowledgeTest } from "../types/knowledge";
 import {
   attemptGate,
   getQuestions,
@@ -257,7 +257,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
         ))}
       </div>
 
-      <div className="mt-8 flex items-center gap-4">
+      <div className="mt-8 flex flex-wrap items-center gap-3">
         {result ? (
           <Link
             to={preview ? `/admin/tests/${test.id}` : "/"}
@@ -294,9 +294,40 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
   );
 }
 
+/* Renders a slide at its fixed design size (16:9) and scales it to fit the
+ * container width. On desktop (container ~1024px) scale ≈ 1, identical to
+ * before; on a phone the whole slide shrinks to fit instead of overflowing
+ * and being clipped. Isolated from the editor's own filmstrip scaling. */
+const SLIDE_DESIGN_W = 1024;
+function ScaledSlide({ slide, sectionNumber }: { slide: KnowledgeSlide; sectionNumber: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  // useLayoutEffect measures before paint, so the slide never flashes at full
+  // design width (which would briefly overflow a narrow screen).
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setScale(el.clientWidth / SLIDE_DESIGN_W);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="relative w-full overflow-hidden" style={{ aspectRatio: "16 / 9" }}>
+      <div
+        className="absolute top-0 left-0"
+        style={{ width: SLIDE_DESIGN_W, transform: `scale(${scale})`, transformOrigin: "top left" }}
+      >
+        <SlideView slide={slide} sectionNumber={sectionNumber} />
+      </div>
+    </div>
+  );
+}
+
 function PreviewBanner({ testId }: { testId: string }) {
   return (
-    <div className="mb-5 flex items-center gap-3 text-[13px] font-semibold text-kp-violet bg-kp-crimson-soft border border-kp-border rounded-lg px-4 py-2.5">
+    <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-semibold text-kp-violet bg-kp-crimson-soft border border-kp-border rounded-lg px-4 py-2.5">
       <span className="font-mono text-[10.5px] font-extrabold tracking-[0.06em] uppercase bg-kp-violet text-white px-1.5 py-0.5 rounded-[5px]">
         Preview
       </span>
@@ -443,7 +474,7 @@ function SlideDeck({
           </button>
         )}
       </div>
-      <SlideView slide={slide} sectionNumber={sectionNumberAt(slides, index)} />
+      <ScaledSlide slide={slide} sectionNumber={sectionNumberAt(slides, index)} />
       <div className="h-1 bg-kp-surface-alt rounded-full mt-3 overflow-hidden">
         <div
           className="h-full bg-kp-crimson transition-all"
@@ -451,7 +482,7 @@ function SlideDeck({
         />
       </div>
 
-      <div className="mt-6 flex items-center gap-3">
+      <div className="mt-6 flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={() => setIndex((i) => Math.max(0, i - 1))}

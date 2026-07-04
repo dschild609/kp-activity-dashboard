@@ -38,7 +38,7 @@ export function TagSelect({
             e.target.value = "";
           }}
           disabled={available.length === 0}
-          className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13px] disabled:opacity-50"
+          className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[13px] disabled:opacity-50 max-w-full"
         >
           <option value="" disabled>
             {options.length === 0 ? "No tags yet…" : available.length === 0 ? "All tags added" : "Add tag…"}

@@ -572,7 +572,7 @@ const Thumb = memo(function Thumb({
     <button
       type="button"
       onClick={() => onSelect(index)}
-      className={`block w-full rounded-lg overflow-hidden border-2 transition-colors ${
+      className={`block w-[130px] shrink-0 md:w-full rounded-lg overflow-hidden border-2 transition-colors ${
         selected ? "border-kp-crimson" : "border-kp-border hover:border-kp-border-strong"
       }`}
       title={slide.title}
@@ -689,9 +689,9 @@ function SlideWorkbench({
   }
 
   return (
-    <div className="flex gap-4">
-      {/* Filmstrip */}
-      <div className="w-[150px] shrink-0 space-y-2 max-h-[640px] overflow-y-auto pr-1">
+    <div className="flex flex-col md:flex-row gap-4">
+      {/* Filmstrip — vertical on desktop, a horizontal scroll strip on mobile */}
+      <div className="flex md:block gap-2 md:space-y-2 w-full md:w-[150px] shrink-0 overflow-x-auto md:overflow-x-visible md:max-h-[640px] md:overflow-y-auto pb-1 md:pb-0 pr-1">
         {slides.map((s, i) => (
           <Thumb
             key={i}
@@ -778,7 +778,7 @@ function SlideWorkbench({
             />
           </label>
 
-          <div className="ml-auto flex gap-2">
+          <div className="sm:ml-auto flex flex-wrap gap-2">
             <SmallButton onClick={() => moveSlide(-1)} disabled={index === 0}>← Move</SmallButton>
             <SmallButton onClick={() => moveSlide(1)} disabled={index === slides.length - 1}>Move →</SmallButton>
             <SmallButton

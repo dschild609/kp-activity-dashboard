@@ -63,13 +63,13 @@ export function AdminPage() {
         </span>
       </div>
 
-      <div className="flex gap-2 mb-8">
+      <div className="flex gap-2 mb-8 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
         {visibleTabs.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
-            className={`rounded-lg border px-3.5 py-2 text-[13.5px] font-semibold transition-colors ${
+            className={`shrink-0 whitespace-nowrap rounded-lg border px-3.5 py-2 text-[13.5px] font-semibold transition-colors ${
               activeTab === t.key
                 ? "bg-kp-navy text-white border-kp-navy"
                 : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
@@ -772,7 +772,8 @@ function AssignmentsAdmin() {
                       ✓ Everyone {branchFilter ? `in ${branchFilter} ` : ""}has completed this.
                     </div>
                   ) : (
-                    <table className="w-full text-[13.5px]">
+                    <div className="overflow-x-auto">
+                    <table className="w-full min-w-[560px] text-[13.5px]">
                       <thead>
                         <tr className="bg-kp-surface-alt border-b border-kp-border-strong">
                           <Th>Person</Th>
@@ -807,6 +808,7 @@ function AssignmentsAdmin() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
                 </div>
               );
@@ -1001,7 +1003,7 @@ function ResultsAdmin() {
 
       {attempts !== null && (
         <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs overflow-x-auto">
-          <table className="w-full text-[14px]">
+          <table className="w-full min-w-[640px] text-[14px]">
             <thead>
               <tr className="bg-kp-surface-alt border-b border-kp-border-strong">
                 <Th>Person</Th>

@@ -19,7 +19,7 @@ export function MyResultsPage() {
 
   return (
     <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-      <h1 className="text-[30px] font-extrabold tracking-[-0.025em] text-kp-navy mb-6">
+      <h1 className="text-[24px] sm:text-[30px] font-extrabold tracking-[-0.025em] text-kp-navy mb-6">
         My Results
       </h1>
 

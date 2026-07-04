@@ -58,9 +58,9 @@ export function SnipModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
-      <div className="bg-kp-surface rounded-2xl shadow-2xl max-w-4xl w-full max-h-full overflow-y-auto p-5">
-        <div className="flex items-center justify-between mb-3">
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-3 sm:p-6">
+      <div className="bg-kp-surface rounded-2xl shadow-2xl max-w-4xl w-full max-h-full overflow-y-auto p-4 sm:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
           <div>
             <h3 className="text-[16px] font-bold text-kp-text">Snip image</h3>
             <p className="text-[12.5px] text-kp-text-muted">

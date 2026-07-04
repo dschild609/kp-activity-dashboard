@@ -48,7 +48,7 @@ export function TestsPage() {
 
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-      <h1 className="text-[30px] font-extrabold tracking-[-0.025em] text-kp-navy mb-1">
+      <h1 className="text-[24px] sm:text-[30px] font-extrabold tracking-[-0.025em] text-kp-navy mb-1">
         Tests
       </h1>
       <p className="text-[14px] text-kp-text-muted mb-6">

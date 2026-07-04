@@ -149,7 +149,7 @@ export function AssignmentEditor({
         </>
       )}
 
-      <div className="flex items-center gap-3 pt-1 border-t border-kp-border-soft">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1 border-t border-kp-border-soft">
         <label className="font-mono text-[11px] uppercase text-kp-text-faint">Due date</label>
         <input
           type="date"

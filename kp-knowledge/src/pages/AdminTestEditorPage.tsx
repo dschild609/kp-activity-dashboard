@@ -109,6 +109,9 @@ export function AdminTestEditorPage() {
     }
   }, [testId]);
   useEffect(() => { void reload(); }, [reload]);
+  // Tag-dropdown vocabulary. Must stay above the early returns below so the
+  // hook order is identical on every render (Rules of Hooks).
+  useEffect(() => subscribeTags(setTagOptions), []);
 
   if (!canManage) {
     return (
@@ -132,8 +135,6 @@ export function AdminTestEditorPage() {
   }
 
   const markDirty = () => setDirty(true);
-
-  useEffect(() => subscribeTags(setTagOptions), []);
 
   async function refreshQuestions() {
     if (testId) setQuestions(await getQuestions(testId));

@@ -526,6 +526,31 @@ function SlideDeck({
   const videoNeedsWatch =
     !preview && slide.kind === "video" && !!slide.videoUrl && !watched.has(index);
 
+  // Fullscreen "present mode" for the slide stage. Arrow keys navigate while
+  // fullscreen; the backdrop uses the app bg so the controls stay readable.
+  // Hidden where the Fullscreen API isn't available (e.g. iOS Safari).
+  const fsRef = useRef<HTMLDivElement>(null);
+  const [isFs, setIsFs] = useState(false);
+  const fsSupported = typeof document !== "undefined" && document.fullscreenEnabled;
+  useEffect(() => {
+    const onChange = () => setIsFs(document.fullscreenElement === fsRef.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggleFs = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void fsRef.current?.requestFullscreen?.();
+  };
+  useEffect(() => {
+    if (!isFs) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" && !last && !videoNeedsWatch) setIndex((i) => Math.min(slides.length - 1, i + 1));
+      else if (e.key === "ArrowLeft") setIndex((i) => Math.max(0, i - 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isFs, last, videoNeedsWatch, slides.length]);
+
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
       {preview && <PreviewBanner testId={test.id} />}
@@ -541,19 +566,39 @@ function SlideDeck({
         </p>
       </div>
 
-      <div className="flex items-center justify-between mb-2">
+      <div
+        ref={fsRef}
+        className={isFs ? "fixed inset-0 z-50 bg-kp-bg overflow-y-auto flex flex-col px-4 sm:px-8 py-5" : undefined}
+      >
+      <div
+        className={isFs ? "mx-auto my-auto w-full" : undefined}
+        style={isFs ? { maxWidth: "calc((100vh - 170px) * 16 / 9)" } : undefined}
+      >
+      <div className="flex items-center justify-between gap-3 mb-2">
         <span className="font-mono text-[11px] font-bold tracking-[0.08em] uppercase text-kp-text-faint">
           Slide {index + 1} / {slides.length}
         </span>
-        {preview && !last && (
-          <button
-            type="button"
-            onClick={onStartQuiz}
-            className="text-[12px] font-semibold text-kp-violet hover:underline"
-          >
-            Skip to quiz (preview) →
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {preview && !last && (
+            <button
+              type="button"
+              onClick={onStartQuiz}
+              className="text-[12px] font-semibold text-kp-violet hover:underline"
+            >
+              Skip to quiz (preview) →
+            </button>
+          )}
+          {fsSupported && (
+            <button
+              type="button"
+              onClick={toggleFs}
+              className="inline-flex items-center gap-1 text-[12px] font-semibold text-kp-text-muted hover:text-kp-navy"
+              title={isFs ? "Exit full screen (Esc)" : "Full screen"}
+            >
+              {isFs ? "⤢ Exit full screen" : "⛶ Full screen"}
+            </button>
+          )}
+        </div>
       </div>
       {slide.kind === "video" ? (
         <VideoSlidePlayer
@@ -607,6 +652,8 @@ function SlideDeck({
         >
           {preview ? "Exit Preview" : "Exit"}
         </button>
+      </div>
+      </div>
       </div>
     </main>
   );

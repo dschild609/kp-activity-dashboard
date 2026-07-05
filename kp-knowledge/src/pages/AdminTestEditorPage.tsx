@@ -32,6 +32,7 @@ import { renderExhibit } from "../lib/exhibitPages";
 import { getRoster, type RosterUser } from "../lib/roster";
 import { subscribeTags, DEFAULT_TAGS } from "../lib/tags";
 import { TagSelect } from "../components/TagSelect";
+import { uploadVideo, parseVideoUrl } from "../lib/video";
 
 /* Review-and-edit surface for a test — the approval gate for AI-generated
  * drafts. Everything is editable: metadata, slides, and questions. Publish
@@ -457,6 +458,7 @@ const SLIDE_LAYOUTS: Array<{
   { value: "steps", kind: "steps", label: "Process steps" },
   { value: "image", kind: "image", imagePosition: "left", label: "Screenshot — text beside" },
   { value: "image-top", kind: "image", imagePosition: "top", label: "Screenshot — text below" },
+  { value: "video", kind: "video", label: "Video" },
 ];
 
 function layoutValueOf(slide: KnowledgeSlide): string {
@@ -504,6 +506,7 @@ function convertSlide(slide: KnowledgeSlide, kind: SlideKind): KnowledgeSlide {
     imageUrl: slide.imageUrl ?? null,
     imageLabel: slide.imageLabel ?? null,
     imagePosition: slide.imagePosition,
+    videoUrl: slide.videoUrl ?? null,
   };
 
   switch (kind) {
@@ -531,7 +534,85 @@ function convertSlide(slide: KnowledgeSlide, kind: SlideKind): KnowledgeSlide {
       };
     case "image":
       return { ...base, body: lines.join(" ") || null };
+    case "video":
+      return { ...base, subtitle: lines[0] ?? null };
   }
+}
+
+/* Video-slide source picker (paste a link or upload a file). Manager-gated
+ * by the surrounding editor; the upload goes straight to Storage. */
+function VideoSourceControls({
+  slide,
+  testId,
+  onChange,
+}: {
+  slide: KnowledgeSlide;
+  testId: string;
+  onChange: (next: KnowledgeSlide) => void;
+}) {
+  const [pct, setPct] = useState<number | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const isFile = slide.videoUrl ? parseVideoUrl(slide.videoUrl).provider === "file" : false;
+
+  async function handleFile(f: File) {
+    setErr(null);
+    setPct(0);
+    try {
+      const url = await uploadVideo(testId, f, (fr) => setPct(Math.round(fr * 100)));
+      onChange({ ...slide, videoUrl: url });
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setPct(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-kp-text-faint ml-2">Video</span>
+      {isFile ? (
+        <span className="inline-flex items-center gap-2 text-[12.5px] text-kp-text-muted">
+          ✓ Uploaded
+          <button
+            type="button"
+            onClick={() => onChange({ ...slide, videoUrl: null })}
+            className="text-kp-bad hover:underline font-semibold"
+          >
+            Remove
+          </button>
+        </span>
+      ) : (
+        <input
+          type="url"
+          value={slide.videoUrl ?? ""}
+          onChange={(e) => onChange({ ...slide, videoUrl: e.target.value.trim() || null })}
+          placeholder="Paste YouTube / Loom / Vimeo link…"
+          className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-1.5 text-[12.5px] w-[240px] max-w-full"
+        />
+      )}
+      <label
+        className={`px-2.5 py-1.5 text-[12.5px] font-semibold border rounded-lg ${
+          pct != null
+            ? "opacity-50 cursor-wait border-kp-border text-kp-text-faint"
+            : "cursor-pointer text-kp-text-muted border-kp-border hover:bg-kp-surface-alt hover:text-kp-navy"
+        }`}
+      >
+        {pct != null ? `Uploading ${pct}%` : isFile ? "⬆ Replace" : "⬆ Upload"}
+        <input
+          type="file"
+          accept="video/*"
+          className="hidden"
+          disabled={pct != null}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleFile(f);
+            e.target.value = "";
+          }}
+        />
+      </label>
+      {err && <span className="text-[11.5px] text-kp-bad">{err}</span>}
+    </div>
+  );
 }
 
 function AddSlideSelect({ onAdd, compact }: { onAdd: (layoutValue: string) => void; compact?: boolean }) {
@@ -730,6 +811,12 @@ function SlideWorkbench({
             ))}
           </select>
 
+          {slide.kind === "video" && (
+            <VideoSourceControls slide={slide} testId={testId!} onChange={update} />
+          )}
+
+          {slide.kind !== "video" && (
+          <>
           <label className="font-mono text-[10.5px] uppercase tracking-[0.06em] text-kp-text-faint ml-2">
             Image
           </label>
@@ -777,6 +864,8 @@ function SlideWorkbench({
               }}
             />
           </label>
+          </>
+          )}
 
           <div className="sm:ml-auto flex flex-wrap gap-2">
             <SmallButton onClick={() => moveSlide(-1)} disabled={index === 0}>← Move</SmallButton>

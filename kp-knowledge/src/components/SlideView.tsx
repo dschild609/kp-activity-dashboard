@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import type { KnowledgeSlide, SlideColumn, SlideStep } from "../types/knowledge";
+import { parseVideoUrl } from "../lib/video";
 
 /* Renders one training slide per the "KP Training Template" deck. The
  * palette is fixed (ink / crimson / cream from the template) regardless of
@@ -47,6 +48,37 @@ export function SlideView({
       {slide.kind === "bullets" && <BulletsSlide slide={slide} edit={edit} />}
       {slide.kind === "steps" && <StepsSlide slide={slide} edit={edit} />}
       {slide.kind === "image" && <ImageSlide slide={slide} edit={edit} />}
+      {slide.kind === "video" && <VideoSlide slide={slide} edit={edit} />}
+    </div>
+  );
+}
+
+/* Editor/thumbnail representation of a video slide — a lightweight poster
+ * (the real player runs in the employee viewer, which is why we don't load a
+ * video into every filmstrip thumbnail). Title + kicker stay click-to-edit. */
+function VideoSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) {
+  const c = edit?.onChange;
+  const v = slide.videoUrl ? parseVideoUrl(slide.videoUrl) : null;
+  const label = !v ? "No video yet" : v.provider === "file" ? "Uploaded video" : `${v.provider} video`;
+  return (
+    <div className="absolute inset-0 flex flex-col p-8" style={{ color: INK }}>
+      <Kicker text={slide.kicker} color={CRIMSON} edit={edit} commit={(val) => c?.({ ...slide, kicker: val })} />
+      <h2 className="font-extrabold leading-tight tracking-[-0.02em]" style={{ fontSize: 26, color: INK }}>
+        <Txt value={slide.title} placeholder="Video title" onCommit={c ? (val) => c({ ...slide, title: val }) : undefined} />
+      </h2>
+      <div
+        className="flex-1 min-h-0 mt-4 flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed"
+        style={{ borderColor: HAIRLINE, background: "#eeece4" }}
+      >
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center"
+          style={{ background: v ? CRIMSON : "#c9c3b4" }}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="white" aria-hidden><path d="M8 5v14l11-7z" /></svg>
+        </div>
+        <div className="font-mono text-[11px] uppercase tracking-[0.14em]" style={{ color: MUTED }}>{label}</div>
+        {v && edit && <div className="text-[11px]" style={{ color: MUTED }}>Preview as employee to watch</div>}
+      </div>
     </div>
   );
 }

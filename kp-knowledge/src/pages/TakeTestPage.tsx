@@ -12,6 +12,8 @@ import {
   type GradeResult,
 } from "../lib/knowledge";
 import { SlideView, sectionNumberAt } from "../components/SlideView";
+import { VideoPlayer } from "../components/VideoPlayer";
+import { parseVideoUrl } from "../lib/video";
 
 /* Per-attempt shuffle: question order is randomized, and MC options are
  * shown in random order with POSITIONAL display letters. Answers are
@@ -325,6 +327,63 @@ function ScaledSlide({ slide, sectionNumber }: { slide: KnowledgeSlide; sectionN
   );
 }
 
+/* Employee rendering of a video slide — a responsive, full-width player
+ * (not the fixed-scale ScaledSlide, so the video stays large on mobile).
+ * Uploaded files auto-mark watched on end; embeds get a confirm button. */
+function VideoSlidePlayer({
+  slide,
+  gate,
+  watched,
+  onWatched,
+}: {
+  slide: KnowledgeSlide;
+  gate: boolean;
+  watched: boolean;
+  onWatched: () => void;
+}) {
+  const v = slide.videoUrl ? parseVideoUrl(slide.videoUrl) : null;
+  return (
+    <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5 sm:p-6">
+      {slide.kicker && (
+        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-kp-crimson mb-1.5">
+          {slide.kicker}
+        </div>
+      )}
+      {slide.title && (
+        <h2 className="text-[18px] sm:text-[22px] font-extrabold tracking-[-0.02em] text-kp-navy mb-4">
+          {slide.title}
+        </h2>
+      )}
+      {slide.videoUrl ? (
+        <VideoPlayer url={slide.videoUrl} onEnded={onWatched} />
+      ) : (
+        <div className="aspect-video bg-kp-surface-alt rounded-lg flex items-center justify-center text-[13px] text-kp-text-faint">
+          No video on this slide yet.
+        </div>
+      )}
+      {slide.body && <p className="text-[14px] text-kp-text-muted mt-4">{slide.body}</p>}
+      {gate && slide.videoUrl && !watched && v?.isEmbed && (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onWatched}
+            className="px-4 py-2 bg-kp-navy hover:bg-kp-navy-hover text-white text-[13.5px] font-semibold rounded-lg"
+          >
+            I've finished watching
+          </button>
+          <span className="text-[12.5px] text-kp-text-faint">Continue once you've watched the video.</span>
+        </div>
+      )}
+      {gate && slide.videoUrl && !watched && !v?.isEmbed && (
+        <div className="mt-3 text-[12.5px] text-kp-text-faint">Finish the video to continue.</div>
+      )}
+      {gate && watched && (
+        <div className="mt-3 text-[12.5px] font-semibold text-kp-good">✓ Watched</div>
+      )}
+    </div>
+  );
+}
+
 function PreviewBanner({ testId }: { testId: string }) {
   return (
     <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-semibold text-kp-violet bg-kp-crimson-soft border border-kp-border rounded-lg px-4 py-2.5">
@@ -438,12 +497,34 @@ function SlideDeck({
   });
   const [resumed] = useState(index > 0);
 
+  // Which video slides this user has already watched (persisted, so a retake
+  // or a resumed session doesn't force a re-watch). Not gated in preview.
+  const watchedKey = progressKey ? `${progressKey}-watched` : null;
+  const [watched, setWatched] = useState<Set<number>>(() => {
+    if (!watchedKey) return new Set();
+    try {
+      return new Set<number>(JSON.parse(localStorage.getItem(watchedKey) ?? "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  const markWatched = (i: number) =>
+    setWatched((prev) => {
+      if (prev.has(i)) return prev;
+      const next = new Set(prev).add(i);
+      if (watchedKey) localStorage.setItem(watchedKey, JSON.stringify([...next]));
+      return next;
+    });
+
   useEffect(() => {
     if (progressKey) localStorage.setItem(progressKey, String(index));
   }, [index, progressKey]);
 
   const slide = slides[index];
   const last = index === slides.length - 1;
+  // Lock advancing off a video slide until it's been watched the first time.
+  const videoNeedsWatch =
+    !preview && slide.kind === "video" && !!slide.videoUrl && !watched.has(index);
 
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
@@ -474,7 +555,16 @@ function SlideDeck({
           </button>
         )}
       </div>
-      <ScaledSlide slide={slide} sectionNumber={sectionNumberAt(slides, index)} />
+      {slide.kind === "video" ? (
+        <VideoSlidePlayer
+          slide={slide}
+          gate={!preview}
+          watched={watched.has(index)}
+          onWatched={() => markWatched(index)}
+        />
+      ) : (
+        <ScaledSlide slide={slide} sectionNumber={sectionNumberAt(slides, index)} />
+      )}
       <div className="h-1 bg-kp-surface-alt rounded-full mt-3 overflow-hidden">
         <div
           className="h-full bg-kp-crimson transition-all"
@@ -495,7 +585,8 @@ function SlideDeck({
           <button
             type="button"
             onClick={onStartQuiz}
-            className="px-5 py-2.5 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[14px] font-semibold rounded-lg transition-colors"
+            disabled={videoNeedsWatch}
+            className="px-5 py-2.5 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[14px] font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Start Quiz ({test.questionCount} questions)
           </button>
@@ -503,7 +594,8 @@ function SlideDeck({
           <button
             type="button"
             onClick={() => setIndex((i) => Math.min(slides.length - 1, i + 1))}
-            className="px-5 py-2.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[14px] font-semibold rounded-lg transition-colors"
+            disabled={videoNeedsWatch}
+            className="px-5 py-2.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[14px] font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Next →
           </button>

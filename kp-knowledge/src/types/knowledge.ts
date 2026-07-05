@@ -10,7 +10,7 @@ export type AnswerKey = "A" | "B" | "C" | "D";
  * - bullets: 1-2 white cards with headed dash-bullet lists (the workhorse)
  * - steps:   horizontal numbered process circles
  * - image:   split layout — exhibit screenshot left, kicker/title/body right */
-export type SlideKind = "title" | "section" | "agenda" | "bullets" | "steps" | "image";
+export type SlideKind = "title" | "section" | "agenda" | "bullets" | "steps" | "image" | "video";
 
 export interface SlideColumn {
   heading: string;
@@ -42,6 +42,9 @@ export interface KnowledgeSlide {
    * "top" for the horizontal variant (image across the top, text below —
    * best for wide snips like a single form row). Default left. */
   imagePosition?: "left" | "right" | "top";
+  /* Video slide source — a pasted YouTube/Loom/Vimeo link or the download
+   * URL of a file uploaded to Storage. Parsed at render time. */
+  videoUrl?: string | null;
 }
 
 /* The one place a slide record is assembled — every field present, no
@@ -61,6 +64,7 @@ export function makeSlide(partial: Partial<KnowledgeSlide> & { kind: SlideKind }
     imageUrl: partial.imageUrl ?? null,
     imageLabel: partial.imageLabel ?? null,
     imagePosition: partial.imagePosition ?? "left",
+    videoUrl: partial.videoUrl ?? null,
   };
 }
 

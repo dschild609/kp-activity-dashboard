@@ -21,7 +21,7 @@ import {
 const SLIDE_SCHEMA = {
   type: "object" as const,
   properties: {
-    kind: { type: "string", enum: ["title", "section", "agenda", "bullets", "steps", "image"] },
+    kind: { type: "string", enum: ["title", "section", "agenda", "bullets", "steps", "image", "video"] },
     kicker: { type: ["string", "null"] },
     title: { type: "string" },
     subtitle: { type: ["string", "null"] },
@@ -37,10 +37,14 @@ const SLIDE_SCHEMA = {
     imageLabel: { type: ["string", "null"] },
     // enum alone (no `type`) — the validator rejects a type-array + enum combo.
     imagePosition: { enum: ["left", "right", "top", null] },
+    videoUrl: {
+      type: ["string", "null"],
+      description: "video slides only: the existing video link/URL — pass it through unchanged; null otherwise",
+    },
   },
   required: [
     "kind", "kicker", "title", "subtitle", "items", "columns", "steps",
-    "body", "note", "imageUrl", "imageLabel", "imagePosition",
+    "body", "note", "imageUrl", "imageLabel", "imagePosition", "videoUrl",
   ],
   additionalProperties: false,
 };
@@ -76,7 +80,7 @@ const SYSTEM_PROMPT = `You are the edit assistant for KP Staffing's training-tes
 
 Editing rules:
 - Apply the instruction precisely. Everything the instruction doesn't touch must come back EXACTLY as it was — same wording, same order, same fields. You are editing, not regenerating.
-- Slide layouts: "title" = the cover (kicker/title/subtitle). "section" = crimson divider (kicker like "SECTION TWO", title, subtitle). "agenda" = numbered list (items). "bullets" = 1-2 columns of headed dash-bullets ("Lead — description" bolds the lead). "steps" = 2-4 sequential steps. "image" = screenshot slide (imageUrl + body + optional note; imagePosition "left"/"right" = side-by-side, "top" = image across the top for wide crops). Each slide sets exactly the fields its kind needs and null for the rest.
+- Slide layouts: "title" = the cover (kicker/title/subtitle). "section" = crimson divider (kicker like "SECTION TWO", title, subtitle). "agenda" = numbered list (items). "bullets" = 1-2 columns of headed dash-bullets ("Lead — description" bolds the lead). "steps" = 2-4 sequential steps. "image" = screenshot slide (imageUrl + body + optional note; imagePosition "left"/"right" = side-by-side, "top" = image across the top for wide crops). "video" = a training video (videoUrl holds a link or uploaded-file URL — pass it through UNCHANGED; you can edit its title/kicker). Each slide sets exactly the fields its kind needs and null for the rest. Never invent a video slide or a videoUrl; only keep ones already present.
 - imageUrl values MUST come from the provided asset list (or be null). Never invent URLs. When adding an image slide, pick the most relevant asset by its name.
 - Questions: keep the "id" of every question you keep or modify; use id null for new questions; omit a question to delete it. Answers must remain verifiable from the slides. Wrong options plausible, never jokes. TF uses optionA "True", optionB "False", C/D null.
 - Never use a personal name for a process contact — say "your admin" or the role title.

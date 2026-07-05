@@ -1,0 +1,65 @@
+// Mirrors the Firestore data model (CLAUDE.md §6) as returned by the backend.
+
+export type SopStatus = "processing" | "draft" | "published";
+
+export interface BlurBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+} // normalized 0–1
+
+export interface ElementDescriptor {
+  selector: string;
+  text: string;
+  ariaLabel: string;
+  bbox: { x: number; y: number; w: number; h: number } | null;
+}
+
+export interface Step {
+  id: string;
+  order: number;
+  timestampMs: number;
+  screenshotUrl: string; // gs:// (raw)
+  screenshotDownloadUrl?: string; // signed https URL for <img>
+  narration: string;
+  elementDescriptor: ElementDescriptor;
+  title: string;
+  instruction: string;
+  blurBoxes: BlurBox[];
+}
+
+export interface Sop {
+  id: string;
+  title: string;
+  system: string;
+  branch: string;
+  task: string;
+  creatorEmail: string;
+  status: SopStatus;
+  overview: string;
+  videoUrl: string;
+  version: number;
+  processingError?: string;
+}
+
+export interface SopDetail extends Sop {
+  steps: Step[];
+}
+
+// PATCH payload — full desired step order; omitted ids are deleted server-side.
+export interface StepPatch {
+  id: string;
+  title: string;
+  instruction: string;
+  blurBoxes: BlurBox[];
+}
+
+export interface SopPatch {
+  title?: string;
+  system?: string;
+  branch?: string;
+  task?: string;
+  overview?: string;
+  steps?: StepPatch[];
+}

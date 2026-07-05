@@ -22,8 +22,9 @@ import { MAX_TOTAL_PAGES, renderExhibit } from "../lib/exhibitPages";
 import { seedForkliftTest } from "../lib/seed";
 import { NoticeBox, Pill, SmallButton, Th } from "../components/ui";
 import { DropZone } from "../components/DropZone";
+import { SopBuilder } from "../sop/SopBuilder";
 
-type Tab = "tests" | "ai" | "assignments" | "results";
+type Tab = "tests" | "ai" | "assignments" | "results" | "sop";
 
 export function AdminPage() {
   const authed = useOutletContext<AuthState>();
@@ -45,6 +46,7 @@ export function AdminPage() {
     { key: "ai", label: "✨ Create with AI", show: manage },
     { key: "assignments", label: "Assignments", show: manage },
     { key: "results", label: "Results", show: viewResults },
+    { key: "sop", label: "SOP Builder", show: manage },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
   const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : visibleTabs[0].key;
@@ -81,6 +83,7 @@ export function AdminPage() {
       {activeTab === "ai" && <AiCreateAdmin />}
       {activeTab === "assignments" && <AssignmentsAdmin />}
       {activeTab === "results" && <ResultsAdmin />}
+      {activeTab === "sop" && <SopBuilder />}
     </main>
   );
 }

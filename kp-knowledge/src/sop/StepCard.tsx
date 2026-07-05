@@ -1,4 +1,4 @@
-import type { BlurBox, Step } from "./types";
+import type { Annotation, BlurBox, Step } from "./types";
 import { BlurEditor } from "./BlurEditor";
 
 interface StepCardProps {
@@ -48,7 +48,9 @@ export function StepCard({
         <BlurEditor
           imageUrl={step.screenshotDownloadUrl}
           boxes={step.blurBoxes}
-          onChange={(boxes: BlurBox[]) => onChange({ blurBoxes: boxes })}
+          annotations={step.annotations ?? []}
+          onBoxesChange={(boxes: BlurBox[]) => onChange({ blurBoxes: boxes })}
+          onAnnotationsChange={(annotations: Annotation[]) => onChange({ annotations })}
         />
 
         <div className="space-y-3">

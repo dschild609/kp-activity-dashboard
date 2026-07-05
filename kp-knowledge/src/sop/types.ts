@@ -9,6 +9,16 @@ export interface BlurBox {
   h: number;
 } // normalized 0–1
 
+export interface Annotation {
+  type: "arrow" | "circle";
+  // normalized 0–1; arrow goes tail→head, circle uses the two points as a bbox
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: string; // hex, no '#'
+}
+
 export interface ElementDescriptor {
   selector: string;
   text: string;
@@ -27,6 +37,7 @@ export interface Step {
   title: string;
   instruction: string;
   blurBoxes: BlurBox[];
+  annotations?: Annotation[];
 }
 
 export interface Sop {
@@ -53,6 +64,7 @@ export interface StepPatch {
   title: string;
   instruction: string;
   blurBoxes: BlurBox[];
+  annotations: Annotation[];
 }
 
 export interface SopPatch {

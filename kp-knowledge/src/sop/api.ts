@@ -68,3 +68,14 @@ export function publishSop(id: string): Promise<{ ok: boolean }> {
 export function deleteSop(id: string): Promise<{ ok: boolean }> {
   return req(`/sops/${id}`, { method: "DELETE" });
 }
+
+export function captureFrame(
+  sopId: string,
+  stepId: string,
+  timestampMs: number,
+): Promise<{ screenshotDownloadUrl: string }> {
+  return req(`/sops/${sopId}/steps/${stepId}/frame`, {
+    method: "POST",
+    body: JSON.stringify({ timestampMs }),
+  });
+}

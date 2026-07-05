@@ -4,7 +4,15 @@
 // signed-in user's Firebase token (VITE_SOP_API_BASE).
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, deleteSop, getSop, listSops, patchSop, publishSop } from "./api";
+import {
+  ApiError,
+  captureFrame,
+  deleteSop,
+  getSop,
+  listSops,
+  patchSop,
+  publishSop,
+} from "./api";
 import type { Sop, SopDetail, SopStatus, Step } from "./types";
 import { StatusPill } from "./StatusPill";
 import { StepCard } from "./StepCard";
@@ -218,6 +226,18 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
     setDirty(true);
   }
 
+  // Grab a frame from the recording at timestampMs and use it as this step's
+  // screenshot. The backend persists it immediately; update the local image.
+  async function grabFrame(index: number, step: Step, timestampMs: number) {
+    const res = await captureFrame(sopId, step.id, timestampMs);
+    setSteps((prev) =>
+      prev.map((s, i) =>
+        i === index ? { ...s, screenshotDownloadUrl: res.screenshotDownloadUrl } : s,
+      ),
+    );
+    setMessage("Screenshot updated from the recording");
+  }
+
   async function save() {
     if (!meta) return;
     setSaving(true);
@@ -335,7 +355,9 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
                     step={step}
                     index={i}
                     total={steps.length}
+                    videoUrl={detail.videoDownloadUrl}
                     onChange={(patch) => editStep(i, patch)}
+                    onGrabFrame={(ms) => grabFrame(i, step, ms)}
                     onMoveUp={() => moveStep(i, -1)}
                     onMoveDown={() => moveStep(i, 1)}
                     onDelete={() => deleteStep(i)}

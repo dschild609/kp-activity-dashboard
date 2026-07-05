@@ -64,6 +64,7 @@ export interface Sop {
 
 export interface SopDetail extends Sop {
   steps: Step[];
+  videoDownloadUrl?: string; // signed URL of the full recording, for scrubbing
 }
 
 // PATCH payload — full desired step order; omitted ids are deleted server-side.

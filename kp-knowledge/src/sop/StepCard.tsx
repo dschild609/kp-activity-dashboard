@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Annotation, BlurBox, Crop, Step } from "./types";
 import { BlurEditor } from "./BlurEditor";
 
@@ -6,7 +6,9 @@ interface StepCardProps {
   step: Step;
   index: number;
   total: number;
+  videoUrl?: string;
   onChange: (patch: Partial<Step>) => void;
+  onGrabFrame?: (timestampMs: number) => Promise<void>;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDelete: () => void;
@@ -16,12 +18,29 @@ export function StepCard({
   step,
   index,
   total,
+  videoUrl,
   onChange,
+  onGrabFrame,
   onMoveUp,
   onMoveDown,
   onDelete,
 }: StepCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
+  const [grabbing, setGrabbing] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  async function useThisFrame() {
+    const v = videoRef.current;
+    if (!v || !onGrabFrame) return;
+    setGrabbing(true);
+    try {
+      await onGrabFrame(Math.round(v.currentTime * 1000));
+      setVideoOpen(false);
+    } finally {
+      setGrabbing(false);
+    }
+  }
 
   const editorProps = {
     imageUrl: step.screenshotDownloadUrl,
@@ -60,15 +79,26 @@ export function StepCard({
       <div className="p-4 grid md:grid-cols-2 gap-4">
         <div>
           <BlurEditor {...editorProps} />
-          {step.screenshotDownloadUrl && (
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              className="mt-2 text-[12px] font-semibold text-kp-text-muted hover:text-kp-text"
-            >
-              ⤢ Expand to full screen
-            </button>
-          )}
+          <div className="mt-2 flex items-center gap-3">
+            {step.screenshotDownloadUrl && (
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className="text-[12px] font-semibold text-kp-text-muted hover:text-kp-text"
+              >
+                ⤢ Expand to full screen
+              </button>
+            )}
+            {videoUrl && onGrabFrame && (
+              <button
+                type="button"
+                onClick={() => setVideoOpen(true)}
+                className="text-[12px] font-semibold text-kp-text-muted hover:text-kp-text"
+              >
+                🎞 Grab frame from recording
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -128,6 +158,56 @@ export function StepCard({
               </button>
             </div>
             <BlurEditor {...editorProps} />
+          </div>
+        </div>
+      )}
+
+      {videoOpen && videoUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setVideoOpen(false)}
+        >
+          <div
+            className="bg-kp-surface rounded-2xl p-4 w-full max-w-[900px] max-h-[92vh] overflow-auto shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="kp-kicker !border-l-0 !pl-0">
+                Step {index + 1} — scrub to the frame you want
+              </span>
+              <button
+                type="button"
+                onClick={() => setVideoOpen(false)}
+                className="px-3 py-1.5 rounded-lg border border-kp-border text-[13px] font-semibold text-kp-text hover:bg-kp-surface-alt"
+              >
+                Close ✕
+              </button>
+            </div>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video
+              ref={videoRef}
+              src={videoUrl}
+              controls
+              className="w-full rounded-lg bg-black"
+              onLoadedMetadata={() => {
+                if (videoRef.current) {
+                  videoRef.current.currentTime = (step.timestampMs || 0) / 1000;
+                }
+              }}
+            />
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-[12px] text-kp-text-muted">
+                Pause on the exact frame, then use it as this step's screenshot.
+              </p>
+              <button
+                type="button"
+                onClick={useThisFrame}
+                disabled={grabbing}
+                className="px-4 py-2 text-[13px] font-bold text-white bg-kp-crimson rounded-lg hover:bg-kp-crimson-hover disabled:opacity-50"
+              >
+                {grabbing ? "Capturing…" : "📷 Use this frame"}
+              </button>
+            </div>
           </div>
         </div>
       )}

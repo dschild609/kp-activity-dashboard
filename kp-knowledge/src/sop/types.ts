@@ -19,6 +19,13 @@ export interface Annotation {
   color: string; // hex, no '#'
 }
 
+export interface Crop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+} // normalized 0–1 snip region
+
 export interface ElementDescriptor {
   selector: string;
   text: string;
@@ -38,6 +45,7 @@ export interface Step {
   instruction: string;
   blurBoxes: BlurBox[];
   annotations?: Annotation[];
+  crop?: Crop | null;
 }
 
 export interface Sop {
@@ -65,6 +73,7 @@ export interface StepPatch {
   instruction: string;
   blurBoxes: BlurBox[];
   annotations: Annotation[];
+  crop?: Crop | null;
 }
 
 export interface SopPatch {

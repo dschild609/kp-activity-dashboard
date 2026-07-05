@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { Annotation, BlurBox } from "./types";
+import type { Annotation, BlurBox, Crop } from "./types";
 
-type Tool = "blur" | "arrow" | "circle";
+type Tool = "blur" | "arrow" | "circle" | "snip";
 // crimson, blue, green, amber
 const COLORS = ["B5172D", "1F6FD0", "0F9D63", "C2820C"];
 
@@ -9,8 +9,10 @@ interface EditorProps {
   imageUrl?: string;
   boxes: BlurBox[];
   annotations: Annotation[];
+  crop?: Crop | null;
   onBoxesChange: (boxes: BlurBox[]) => void;
   onAnnotationsChange: (annotations: Annotation[]) => void;
+  onCropChange: (crop: Crop | null) => void;
 }
 
 interface Draft {
@@ -26,8 +28,10 @@ export function BlurEditor({
   imageUrl,
   boxes,
   annotations,
+  crop,
   onBoxesChange,
   onAnnotationsChange,
+  onCropChange,
 }: EditorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<Tool>("blur");
@@ -83,6 +87,15 @@ export function BlurEditor({
           { type: "arrow", x1: d.x0, y1: d.y0, x2: d.x1, y2: d.y1, color },
         ]);
       }
+    } else if (tool === "snip") {
+      if (dx > 0.03 && dy > 0.03) {
+        onCropChange({
+          x: Math.min(d.x0, d.x1),
+          y: Math.min(d.y0, d.y1),
+          w: dx,
+          h: dy,
+        });
+      }
     } else if (dx > 0.02 && dy > 0.02) {
       onAnnotationsChange([
         ...annotations,
@@ -98,7 +111,7 @@ export function BlurEditor({
     <div className="space-y-2">
       {/* Tool palette */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        {(["blur", "arrow", "circle"] as Tool[]).map((t) => (
+        {(["blur", "arrow", "circle", "snip"] as Tool[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -109,10 +122,25 @@ export function BlurEditor({
                 : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
             }`}
           >
-            {t === "blur" ? "▩ Blur" : t === "arrow" ? "↗ Arrow" : "◯ Circle"}
+            {t === "blur"
+              ? "▩ Blur"
+              : t === "arrow"
+                ? "↗ Arrow"
+                : t === "circle"
+                  ? "◯ Circle"
+                  : "✂ Snip"}
           </button>
         ))}
-        {tool !== "blur" && (
+        {crop && (
+          <button
+            type="button"
+            onClick={() => onCropChange(null)}
+            className="px-2.5 py-1 rounded-lg border border-kp-border text-[12px] font-semibold text-kp-crimson hover:bg-kp-bad-bg"
+          >
+            Clear snip
+          </button>
+        )}
+        {(tool === "arrow" || tool === "circle") && (
           <div className="flex items-center gap-1 ml-1">
             {COLORS.map((c) => (
               <button
@@ -208,6 +236,37 @@ export function BlurEditor({
             }}
           />
         )}
+
+        {/* Snip region — dims everything outside; that region is what's kept */}
+        {crop && (
+          <div
+            className="absolute border-2 border-dashed pointer-events-none"
+            style={{
+              left: `${crop.x * 100}%`,
+              top: `${crop.y * 100}%`,
+              width: `${crop.w * 100}%`,
+              height: `${crop.h * 100}%`,
+              borderColor: "#C2820C",
+              boxShadow: "0 0 0 9999px rgba(0,0,0,0.4)",
+            }}
+          >
+            <span className="absolute -top-[18px] left-0 text-[9px] font-mono font-bold uppercase tracking-wider text-white bg-[#C2820C] px-1.5 py-0.5 rounded-[3px]">
+              Snip
+            </span>
+          </div>
+        )}
+        {draft && tool === "snip" && (
+          <div
+            className="absolute border-2 border-dashed pointer-events-none"
+            style={{
+              left: `${Math.min(draft.x0, draft.x1) * 100}%`,
+              top: `${Math.min(draft.y0, draft.y1) * 100}%`,
+              width: `${Math.abs(draft.x1 - draft.x0) * 100}%`,
+              height: `${Math.abs(draft.y1 - draft.y0) * 100}%`,
+              borderColor: "#C2820C",
+            }}
+          />
+        )}
       </div>
 
       <p className="text-[11px] text-kp-text-muted">
@@ -215,7 +274,9 @@ export function BlurEditor({
           ? "Drag to blur sensitive data."
           : tool === "arrow"
             ? "Drag from where you want the arrow to start, to where it points."
-            : "Drag a box to circle/highlight an area."}{" "}
+            : tool === "circle"
+              ? "Drag a box to circle/highlight an area."
+              : "Drag to snip — only that region shows (larger) in the SOP."}{" "}
         Hover a mark and click × to remove.
       </p>
     </div>

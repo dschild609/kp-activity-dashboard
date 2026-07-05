@@ -1,4 +1,5 @@
-import type { Annotation, BlurBox, Step } from "./types";
+import { useState } from "react";
+import type { Annotation, BlurBox, Crop, Step } from "./types";
 import { BlurEditor } from "./BlurEditor";
 
 interface StepCardProps {
@@ -20,6 +21,18 @@ export function StepCard({
   onMoveDown,
   onDelete,
 }: StepCardProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  const editorProps = {
+    imageUrl: step.screenshotDownloadUrl,
+    boxes: step.blurBoxes,
+    annotations: step.annotations ?? [],
+    crop: step.crop ?? null,
+    onBoxesChange: (boxes: BlurBox[]) => onChange({ blurBoxes: boxes }),
+    onAnnotationsChange: (annotations: Annotation[]) => onChange({ annotations }),
+    onCropChange: (crop: Crop | null) => onChange({ crop }),
+  };
+
   return (
     <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-2.5 bg-kp-surface-alt border-b border-kp-border">
@@ -45,13 +58,18 @@ export function StepCard({
       </div>
 
       <div className="p-4 grid md:grid-cols-2 gap-4">
-        <BlurEditor
-          imageUrl={step.screenshotDownloadUrl}
-          boxes={step.blurBoxes}
-          annotations={step.annotations ?? []}
-          onBoxesChange={(boxes: BlurBox[]) => onChange({ blurBoxes: boxes })}
-          onAnnotationsChange={(annotations: Annotation[]) => onChange({ annotations })}
-        />
+        <div>
+          <BlurEditor {...editorProps} />
+          {step.screenshotDownloadUrl && (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="mt-2 text-[12px] font-semibold text-kp-text-muted hover:text-kp-text"
+            >
+              ⤢ Expand to full screen
+            </button>
+          )}
+        </div>
 
         <div className="space-y-3">
           <label className="block">
@@ -87,6 +105,32 @@ export function StepCard({
           )}
         </div>
       </div>
+
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setExpanded(false)}
+        >
+          <div
+            className="bg-kp-surface rounded-2xl p-4 w-full max-w-[92vw] max-h-[92vh] overflow-auto shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="kp-kicker !border-l-0 !pl-0">
+                Step {index + 1} — full screen
+              </span>
+              <button
+                type="button"
+                onClick={() => setExpanded(false)}
+                className="px-3 py-1.5 rounded-lg border border-kp-border text-[13px] font-semibold text-kp-text hover:bg-kp-surface-alt"
+              >
+                Close ✕
+              </button>
+            </div>
+            <BlurEditor {...editorProps} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

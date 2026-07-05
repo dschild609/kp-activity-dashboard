@@ -231,6 +231,7 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
           instruction: s.instruction,
           blurBoxes: s.blurBoxes,
           annotations: s.annotations ?? [],
+          crop: s.crop ?? null,
         })),
       });
       setDirty(false);

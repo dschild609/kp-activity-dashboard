@@ -64,3 +64,7 @@ export function patchSop(id: string, patch: SopPatch): Promise<{ ok: boolean }> 
 export function publishSop(id: string): Promise<{ ok: boolean }> {
   return req(`/sops/${id}/publish`, { method: "POST" });
 }
+
+export function deleteSop(id: string): Promise<{ ok: boolean }> {
+  return req(`/sops/${id}`, { method: "DELETE" });
+}

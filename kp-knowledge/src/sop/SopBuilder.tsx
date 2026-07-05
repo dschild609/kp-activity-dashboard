@@ -4,7 +4,7 @@
 // signed-in user's Firebase token (VITE_SOP_API_BASE).
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getSop, listSops, patchSop, publishSop } from "./api";
+import { ApiError, deleteSop, getSop, listSops, patchSop, publishSop } from "./api";
 import type { Sop, SopDetail, SopStatus, Step } from "./types";
 import { StatusPill } from "./StatusPill";
 import { StepCard } from "./StepCard";
@@ -29,6 +29,7 @@ function Catalog({ onOpen }: { onOpen: (id: string) => void }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -38,6 +39,21 @@ function Catalog({ onOpen }: { onOpen: (id: string) => void }) {
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
   }, [filter]);
+
+  async function remove(sop: Sop) {
+    if (!window.confirm(`Delete "${sop.title || sop.task || "this SOP"}"? This can't be undone.`)) {
+      return;
+    }
+    setDeletingId(sop.id);
+    try {
+      await deleteSop(sop.id);
+      setSops((prev) => prev.filter((s) => s.id !== sop.id));
+    } catch (e) {
+      setError(`Couldn't delete: ${(e as Error).message}`);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div>
@@ -83,11 +99,10 @@ function Catalog({ onOpen }: { onOpen: (id: string) => void }) {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {sops.map((sop) => (
-          <button
+          <div
             key={sop.id}
-            type="button"
             onClick={() => onOpen(sop.id)}
-            className="group text-left flex flex-col bg-kp-surface rounded-xl border border-kp-border shadow-2xs hover:border-kp-border-strong hover:-translate-y-0.5 transition-all overflow-hidden"
+            className="group cursor-pointer text-left flex flex-col bg-kp-surface rounded-xl border border-kp-border shadow-2xs hover:border-kp-border-strong hover:-translate-y-0.5 transition-all overflow-hidden"
           >
             <div className="px-4 py-2 bg-kp-chrome flex items-center gap-2">
               <span className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-white/70">
@@ -109,11 +124,23 @@ function Catalog({ onOpen }: { onOpen: (id: string) => void }) {
             </div>
             <div className="px-4 py-2.5 border-t border-kp-border-soft flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider text-kp-text-faint">
               <span>{sop.branch || "Company-wide"}</span>
-              <span className="ml-auto text-kp-crimson opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                title="Delete SOP"
+                disabled={deletingId === sop.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void remove(sop);
+                }}
+                className="ml-auto text-kp-text-faint hover:text-kp-crimson disabled:opacity-40 transition-colors normal-case"
+              >
+                {deletingId === sop.id ? "Deleting…" : "🗑 Delete"}
+              </button>
+              <span className="text-kp-crimson opacity-0 group-hover:opacity-100 transition-opacity">
                 Review →
               </span>
             </div>
-          </button>
+          </div>
         ))}
       </div>
     </div>

@@ -19,6 +19,7 @@ const NAV_DESTINATIONS: NavDestination[] = [
   { label: "Tests", to: "/", end: true, visible: () => true },
   { label: "My Results", to: "/results", visible: () => true },
   { label: "Admin", to: "/admin", visible: (canAdmin) => canAdmin },
+  { label: "Create", to: "/create", visible: (canAdmin) => canAdmin },
 ];
 
 const TAB_ACTIVE =

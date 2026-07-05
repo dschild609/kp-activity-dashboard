@@ -22,9 +22,8 @@ import { MAX_TOTAL_PAGES, renderExhibit } from "../lib/exhibitPages";
 import { seedForkliftTest } from "../lib/seed";
 import { NoticeBox, Pill, SmallButton, Th } from "../components/ui";
 import { DropZone } from "../components/DropZone";
-import { SopBuilder } from "../sop/SopBuilder";
 
-type Tab = "tests" | "ai" | "assignments" | "results" | "sop";
+type Tab = "tests" | "assignments" | "results";
 
 export function AdminPage() {
   const authed = useOutletContext<AuthState>();
@@ -43,10 +42,8 @@ export function AdminPage() {
 
   const tabs: Array<{ key: Tab; label: string; show: boolean }> = [
     { key: "tests", label: "Tests", show: manage },
-    { key: "ai", label: "✨ Create with AI", show: manage },
     { key: "assignments", label: "Assignments", show: manage },
     { key: "results", label: "Results", show: viewResults },
-    { key: "sop", label: "SOP Builder", show: manage },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
   const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : visibleTabs[0].key;
@@ -80,10 +77,8 @@ export function AdminPage() {
       </div>
 
       {activeTab === "tests" && <TestsAdmin authed={authed} />}
-      {activeTab === "ai" && <AiCreateAdmin />}
       {activeTab === "assignments" && <AssignmentsAdmin />}
       {activeTab === "results" && <ResultsAdmin />}
-      {activeTab === "sop" && <SopBuilder />}
     </main>
   );
 }
@@ -289,7 +284,7 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
 
 /* ── AI Create tab ───────────────────────────────────────────────── */
 
-function AiCreateAdmin() {
+export function AiCreateAdmin() {
   const navigate = useNavigate();
   const [sourceDoc, setSourceDoc] = useState<File | null>(null);
   const [exhibitFiles, setExhibitFiles] = useState<File[]>([]);

@@ -13,6 +13,9 @@ const AdminPage = lazy(() =>
 const AdminTestEditorPage = lazy(() =>
   import("./pages/AdminTestEditorPage").then((m) => ({ default: m.AdminTestEditorPage }))
 );
+const CreatePage = lazy(() =>
+  import("./pages/CreatePage").then((m) => ({ default: m.CreatePage }))
+);
 
 function AdminLoading() {
   return (
@@ -47,6 +50,14 @@ function App() {
             }
           />
           <Route path="admin/tests/:testId/preview" element={<TakeTestPage preview />} />
+          <Route
+            path="create"
+            element={
+              <Suspense fallback={<AdminLoading />}>
+                <CreatePage />
+              </Suspense>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

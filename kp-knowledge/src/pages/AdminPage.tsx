@@ -10,14 +10,12 @@ import {
   type ReminderRow,
 } from "../lib/reminders";
 import {
-  createTest,
   deleteAttempt,
   deleteTest,
   listAttempts,
   listTests,
   updateTest,
 } from "../lib/knowledge";
-import { parseTestExcel } from "../lib/parseTestExcel";
 import { subscribeTags, addTag, removeTag } from "../lib/tags";
 import { generateTestFromDoc } from "../lib/aiGenerate";
 import { MAX_TOTAL_PAGES, renderExhibit } from "../lib/exhibitPages";
@@ -25,7 +23,7 @@ import { seedForkliftTest } from "../lib/seed";
 import { NoticeBox, Pill, SmallButton, Th } from "../components/ui";
 import { DropZone } from "../components/DropZone";
 
-type Tab = "tests" | "ai" | "upload" | "assignments" | "results";
+type Tab = "tests" | "ai" | "assignments" | "results";
 
 export function AdminPage() {
   const authed = useOutletContext<AuthState>();
@@ -45,7 +43,6 @@ export function AdminPage() {
   const tabs: Array<{ key: Tab; label: string; show: boolean }> = [
     { key: "tests", label: "Tests", show: manage },
     { key: "ai", label: "✨ Create with AI", show: manage },
-    { key: "upload", label: "Upload Test", show: manage },
     { key: "assignments", label: "Assignments", show: manage },
     { key: "results", label: "Results", show: viewResults },
   ];
@@ -82,7 +79,6 @@ export function AdminPage() {
 
       {activeTab === "tests" && <TestsAdmin authed={authed} />}
       {activeTab === "ai" && <AiCreateAdmin />}
-      {activeTab === "upload" && <UploadAdmin authed={authed} />}
       {activeTab === "assignments" && <AssignmentsAdmin />}
       {activeTab === "results" && <ResultsAdmin />}
     </main>
@@ -222,7 +218,7 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
       {tests !== null && tests.length === 0 && (
         <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-10 text-center">
           <div className="text-[14px] text-kp-text-muted mb-4">
-            No tests yet. Upload one from Excel, or seed the sample test.
+            No tests yet. Head to the <strong>Create with AI</strong> tab to make one.
           </div>
           {import.meta.env.DEV && (
             <button
@@ -468,77 +464,6 @@ function FileRow({
 }
 
 /* ── Upload tab ──────────────────────────────────────────────────── */
-
-function UploadAdmin({ authed }: { authed: AuthState }) {
-  const [status, setStatus] = useState<
-    | { kind: "idle" }
-    | { kind: "working" }
-    | { kind: "done"; name: string; count: number }
-    | { kind: "error"; message: string }
-  >({ kind: "idle" });
-  const [tags, setTags] = useState("");
-
-  async function handleFile(file: File) {
-    setStatus({ kind: "working" });
-    try {
-      const parsed = await parseTestExcel(file);
-      await createTest({
-        ...parsed,
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-        createdBy: authed.user?.email ?? "",
-      });
-      setStatus({ kind: "done", name: parsed.name, count: parsed.questions.length });
-    } catch (e) {
-      setStatus({ kind: "error", message: (e as Error).message });
-    }
-  }
-
-  return (
-    <section className="max-w-2xl">
-      <h2 className="kp-kicker mb-4">Upload Test from Excel</h2>
-
-      <label className="block mb-4">
-        <span className="font-mono text-[11px] uppercase text-kp-text-faint">
-          Tags (comma-separated, optional)
-        </span>
-        <input
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          placeholder="Safety, Warehouse"
-          className="focus-kp mt-1 w-full bg-kp-surface border border-kp-border rounded-lg px-3 py-2 text-[13.5px]"
-        />
-      </label>
-
-      <DropZone
-        icon="📄"
-        title="Drop an .xlsx file here, or click to choose"
-        hint='Needs "Questions" and "Settings" sheets'
-        accept=".xlsx"
-        onFiles={(files) => handleFile(files[0])}
-      />
-
-      {status.kind === "working" && (
-        <div className="mt-4 text-[13.5px] text-kp-text-muted">Parsing and creating test…</div>
-      )}
-      {status.kind === "done" && (
-        <NoticeBox tone="good" className="mt-4">
-          Created <strong>{status.name}</strong> with {status.count} questions.
-        </NoticeBox>
-      )}
-      {status.kind === "error" && <NoticeBox tone="bad" className="mt-4">{status.message}</NoticeBox>}
-
-      <div className="mt-8 bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
-        <h3 className="kp-kicker mb-3">Format</h3>
-        <div className="text-[13px] text-kp-text-muted space-y-2">
-          <p><strong className="text-kp-text">Questions sheet</strong> — columns: question_text, question_type (MC or TF), option_a, option_b, option_c, option_d, correct_answer (A–D). TF questions use only A/B.</p>
-          <p><strong className="text-kp-text">Settings sheet</strong> — two-column rows: test_name, description, max_wrong_to_pass (how many wrong answers still pass).</p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Results tab ─────────────────────────────────────────────────── */
 
 /* ── Assignments / completion tab ────────────────────────────────── */
 

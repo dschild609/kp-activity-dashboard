@@ -47,7 +47,7 @@ export function StepCard({
   }
 
   const hasBox = !!step.elementDescriptor?.boxNorm;
-  const focusOn = step.focus ?? true;
+  const focusOn = step.focus ?? false;
 
   const editorProps = {
     imageUrl: step.screenshotDownloadUrl,

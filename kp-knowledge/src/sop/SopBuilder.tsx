@@ -253,6 +253,14 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
 
   useEffect(load, [load]);
 
+  // While a SOP is still drafting, poll until it lands so the reviewer doesn't
+  // have to hit Refresh (drafting usually finishes in a second or two).
+  useEffect(() => {
+    if (detail?.status !== "processing") return;
+    const t = setInterval(load, 3500);
+    return () => clearInterval(t);
+  }, [detail?.status, load]);
+
   function editMeta(patch: Partial<Meta>) {
     setMeta((m) => (m ? { ...m, ...patch } : m));
     setDirty(true);

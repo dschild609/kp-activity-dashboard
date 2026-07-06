@@ -57,6 +57,8 @@ export interface Sop {
   creatorEmail: string;
   status: SopStatus;
   overview: string;
+  whyItMatters?: string;
+  bottomLine?: string;
   videoUrl: string;
   version: number;
   processingError?: string;
@@ -83,5 +85,7 @@ export interface SopPatch {
   branch?: string;
   task?: string;
   overview?: string;
+  whyItMatters?: string;
+  bottomLine?: string;
   steps?: StepPatch[];
 }

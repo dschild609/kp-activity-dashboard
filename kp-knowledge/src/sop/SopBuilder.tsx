@@ -163,6 +163,8 @@ interface Meta {
   branch: string;
   task: string;
   overview: string;
+  whyItMatters: string;
+  bottomLine: string;
 }
 
 function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
@@ -191,6 +193,8 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
           branch: d.branch ?? "",
           task: d.task ?? "",
           overview: d.overview ?? "",
+          whyItMatters: d.whyItMatters ?? "",
+          bottomLine: d.bottomLine ?? "",
         });
         setSteps([...d.steps].sort((a, b) => a.order - b.order));
         setDirty(false);
@@ -340,6 +344,32 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
                   rows={2}
                   className="w-full px-3 py-2 text-[14px] text-kp-text-muted bg-kp-surface border border-kp-border rounded-lg focus-kp resize-y"
                 />
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="block text-[11px] font-mono uppercase tracking-wider text-kp-text-muted mb-1">
+                      Why it matters
+                    </span>
+                    <textarea
+                      value={meta.whyItMatters}
+                      onChange={(e) => editMeta({ whyItMatters: e.target.value })}
+                      placeholder="Why this process matters / what's at stake"
+                      rows={3}
+                      className="w-full px-3 py-2 text-[13px] bg-kp-surface border border-kp-border rounded-lg focus-kp resize-y"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[11px] font-mono uppercase tracking-wider text-kp-text-muted mb-1">
+                      Bottom line
+                    </span>
+                    <textarea
+                      value={meta.bottomLine}
+                      onChange={(e) => editMeta({ bottomLine: e.target.value })}
+                      placeholder="The one thing to remember"
+                      rows={3}
+                      className="w-full px-3 py-2 text-[13px] bg-kp-surface border border-kp-border rounded-lg focus-kp resize-y"
+                    />
+                  </label>
+                </div>
                 <div className="grid sm:grid-cols-3 gap-3">
                   <MetaField label="System" value={meta.system} onChange={(v) => editMeta({ system: v })} />
                   <MetaField label="Branch" value={meta.branch} onChange={(v) => editMeta({ branch: v })} />

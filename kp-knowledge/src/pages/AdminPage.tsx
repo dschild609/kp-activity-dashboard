@@ -613,11 +613,27 @@ function AssignmentsAdmin() {
   const [reminderMsg, setReminderMsg] = useState<string | null>(null);
   const [reminderErr, setReminderErr] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     Promise.all([getRoster(), listTests({ activeOnly: false }), listAttempts({})])
       .then(([r, t, a]) => { setRoster(r); setTests(t); setAttempts(a); })
       .catch((e) => setError((e as Error).message));
   }, []);
+  useEffect(() => { reload(); }, [reload]);
+
+  async function removeAssignment(test: KnowledgeTest) {
+    if (
+      !window.confirm(
+        `Remove the assignment on "${test.name}"? It stays available to take, but won't be tracked here and reminders will stop.`
+      )
+    )
+      return;
+    try {
+      await updateTest(test.id, { assignment: EMPTY_ASSIGNMENT });
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   async function preview() {
     setReminderBusy(true);
@@ -808,6 +824,9 @@ function AssignmentsAdmin() {
                     </Pill>
                     <DueBadge dueDate={tc.test.assignment.dueDate} allDone={tc.done === tc.total} />
                     <AssignmentSummary test={tc.test} />
+                    <SmallButton tone="danger" onClick={() => removeAssignment(tc.test)}>
+                      Remove
+                    </SmallButton>
                   </div>
                   {rows.length === 0 ? (
                     <div className="px-4 py-4 text-[13.5px] text-kp-good">

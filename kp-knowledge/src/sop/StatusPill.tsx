@@ -16,7 +16,12 @@ const MAP: Record<SopStatus, { label: string; cls: string }> = {
 };
 
 export function StatusPill({ status }: { status: SopStatus }) {
-  const s = MAP[status];
+  // Fall back gracefully for any unexpected status so a stray value can never
+  // crash the catalog (an unknown status blanking the whole page happened once).
+  const s = MAP[status] ?? {
+    label: String(status || "unknown"),
+    cls: "text-kp-text-muted bg-kp-surface-alt border-kp-border",
+  };
   return (
     <span
       className={`inline-block px-2 py-0.5 rounded-[6px] border text-[11px] font-mono font-bold uppercase tracking-[0.06em] ${s.cls}`}

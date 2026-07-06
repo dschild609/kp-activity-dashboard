@@ -28,15 +28,19 @@ export function StepCard({
   const [expanded, setExpanded] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
   const [grabbing, setGrabbing] = useState(false);
+  const [grabError, setGrabError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   async function useThisFrame() {
     const v = videoRef.current;
     if (!v || !onGrabFrame) return;
     setGrabbing(true);
+    setGrabError(null);
     try {
       await onGrabFrame(Math.round(v.currentTime * 1000));
       setVideoOpen(false);
+    } catch (e) {
+      setGrabError((e as Error).message || "Couldn't grab that frame");
     } finally {
       setGrabbing(false);
     }
@@ -197,7 +201,11 @@ export function StepCard({
             />
             <div className="mt-3 flex items-center justify-between">
               <p className="text-[12px] text-kp-text-muted">
-                Pause on the exact frame, then use it as this step's screenshot.
+                {grabError ? (
+                  <span className="text-kp-bad font-semibold">{grabError}</span>
+                ) : (
+                  "Pause on the exact frame, then use it as this step's screenshot."
+                )}
               </p>
               <button
                 type="button"

@@ -233,13 +233,27 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
   // Grab a frame from the recording at timestampMs and use it as this step's
   // screenshot. The backend persists it immediately; update the local image.
   async function grabFrame(index: number, step: Step, timestampMs: number) {
+    // Throws on failure — StepCard's video modal catches and shows the error.
     const res = await captureFrame(sopId, step.id, timestampMs);
     setSteps((prev) =>
       prev.map((s, i) =>
-        i === index ? { ...s, screenshotDownloadUrl: res.screenshotDownloadUrl } : s,
+        i === index
+          ? {
+              ...s,
+              screenshotDownloadUrl: res.screenshotDownloadUrl,
+              // The marks were positioned on the OLD frame — drop them so a
+              // stale blur can't rasterize onto the new image and miss
+              // sensitive data. Re-blur/annotate on the new frame as needed.
+              blurBoxes: [],
+              annotations: [],
+              crop: null,
+            }
+          : s,
       ),
     );
-    setMessage("Screenshot updated from the recording");
+    setDirty(true);
+    setActionError(null);
+    setMessage("New frame captured — blur/marks were cleared; re-check, then Save.");
   }
 
   async function save() {

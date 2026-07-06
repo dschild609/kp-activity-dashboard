@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
-import { isAssigned, type KnowledgeAttempt, type KnowledgeTest } from "../types/knowledge";
+import {
+  EMPTY_ASSIGNMENT,
+  isAssigned,
+  type Assignment,
+  type KnowledgeAttempt,
+  type KnowledgeTest,
+} from "../types/knowledge";
 import { daysUntil, formatDue, getRoster, resolveAssigned, roleLabel, type RosterUser } from "../lib/roster";
+import { AssignmentEditor } from "../components/AssignmentEditor";
 import {
   previewReminders,
   sendReminders,
@@ -171,11 +178,15 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
   const [tests, setTests] = useState<KnowledgeTest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [roster, setRoster] = useState<RosterUser[]>([]);
+  const [assigning, setAssigning] = useState<KnowledgeTest | null>(null);
 
   const reload = useCallback(() => {
     listTests({ activeOnly: false }).then(setTests).catch((e) => setError((e as Error).message));
   }, []);
   useEffect(reload, [reload]);
+  // Roster feeds the ad-hoc assignment picker (loaded once, reused per test).
+  useEffect(() => { getRoster().then(setRoster).catch(() => {}); }, []);
 
   async function handleSeed() {
     if (!authed.user) return;
@@ -258,9 +269,30 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
                 </div>
                 <div className="text-[12.5px] text-kp-text-faint mt-0.5">
                   {test.questionCount} questions · up to {test.maxWrongToPass} wrong to pass
+                  {isAssigned(test.assignment) && roster.length > 0 && (
+                    <>
+                      {" · "}
+                      <span className="text-kp-text-muted">
+                        assigned to {resolveAssigned(test.assignment, roster).length}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAssigning(test)}
+                  disabled={test.status === "draft"}
+                  title={
+                    test.status === "draft"
+                      ? "Publish the test first, then assign it"
+                      : "Assign this test to people, roles, or branches"
+                  }
+                  className="px-2.5 py-1.5 text-[12.5px] font-semibold rounded-lg transition-colors bg-kp-navy text-white hover:bg-kp-navy-hover disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Assign
+                </button>
                 <Link
                   to={`/admin/tests/${test.id}`}
                   className="px-2.5 py-1.5 text-[12.5px] font-semibold border rounded-lg transition-colors text-kp-text-muted border-kp-border hover:bg-kp-surface-alt hover:text-kp-navy"
@@ -278,7 +310,94 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
           </div>
         ))}
       </div>
+
+      {assigning && (
+        <AssignModal
+          test={assigning}
+          roster={roster}
+          onClose={() => setAssigning(null)}
+          onSaved={() => { setAssigning(null); reload(); }}
+        />
+      )}
     </section>
+  );
+}
+
+/* Ad-hoc assignment: open the same picker used when creating a test, on an
+ * already-created one, and save who it's assigned to (+ due date) back to the
+ * test. Local draft so Cancel discards. */
+function AssignModal({
+  test,
+  roster,
+  onClose,
+  onSaved,
+}: {
+  test: KnowledgeTest;
+  roster: RosterUser[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState<Assignment>(test.assignment ?? EMPTY_ASSIGNMENT);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setErr(null);
+    try {
+      await updateTest(test.id, { assignment: draft });
+      onSaved();
+    } catch (e) {
+      setErr((e as Error).message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="bg-kp-surface-alt rounded-2xl w-full max-w-2xl my-8 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-kp-border">
+          <div className="min-w-0">
+            <h3 className="text-[17px] font-bold text-kp-text truncate">Assign test</h3>
+            <p className="text-[12.5px] text-kp-text-faint truncate">{test.name}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto px-3 py-1.5 rounded-lg border border-kp-border text-[13px] font-semibold text-kp-text hover:bg-kp-surface"
+          >
+            Close ✕
+          </button>
+        </div>
+
+        <div className="p-5">
+          <p className="text-[13px] text-kp-text-muted mb-4">
+            Choose who this test is assigned to. It's tracked for completion on the
+            Assignments tab, and assignees are reminded as the due date approaches.
+          </p>
+          <AssignmentEditor assignment={draft} roster={roster} onChange={setDraft} />
+          {err && <NoticeBox tone="bad" className="mt-4">{err}</NoticeBox>}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-kp-border">
+          <SmallButton onClick={onClose}>Cancel</SmallButton>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || roster.length === 0}
+            className="px-4 py-2 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[13.5px] font-semibold rounded-lg disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save assignment"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -10,6 +10,7 @@ export function AuthedLayout() {
           <TopNav
             user={authed.user}
             canAdmin={authed.canManage || authed.canViewResults}
+            canUseSopBuilder={authed.canUseSopBuilder}
             onSignOut={authed.signOut}
           />
           <Outlet context={authed} />

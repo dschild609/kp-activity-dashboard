@@ -2,9 +2,15 @@ import { NavLink } from "react-router-dom";
 import type { User } from "firebase/auth";
 import { useTheme } from "../hooks/useTheme";
 
+interface NavFlags {
+  canAdmin: boolean;
+  canUseSopBuilder: boolean;
+}
+
 interface TopNavProps {
   user: User | null;
   canAdmin: boolean;
+  canUseSopBuilder: boolean;
   onSignOut: () => void;
 }
 
@@ -12,24 +18,27 @@ interface NavDestination {
   label: string;
   to: string;
   end?: boolean;
-  visible: (canAdmin: boolean) => boolean;
+  visible: (flags: NavFlags) => boolean;
 }
 
 const NAV_DESTINATIONS: NavDestination[] = [
   { label: "Tests", to: "/", end: true, visible: () => true },
   { label: "My Results", to: "/results", visible: () => true },
-  { label: "Admin", to: "/admin", visible: (canAdmin) => canAdmin },
-  { label: "Create", to: "/create", visible: (canAdmin) => canAdmin },
+  { label: "Admin", to: "/admin", visible: (f) => f.canAdmin },
+  // Create hosts "Create with AI" (admins) and "SOP Builder" (SOP creators).
+  { label: "Create", to: "/create", visible: (f) => f.canAdmin || f.canUseSopBuilder },
 ];
 
 const TAB_ACTIVE =
   "font-bold bg-kp-crimson-soft text-kp-crimson-soft-text dark:text-white shadow-[inset_0_0_0_1px_rgba(148,0,42,.3)] dark:shadow-[inset_0_0_0_1px_rgba(255,59,92,.45)] rounded-[8px]";
 const TAB_INACTIVE = "font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-[8px]";
 
-export function TopNav({ user, canAdmin, onSignOut }: TopNavProps) {
+export function TopNav({ user, canAdmin, canUseSopBuilder, onSignOut }: TopNavProps) {
   const { toggle, resolved } = useTheme();
 
-  const visibleDestinations = NAV_DESTINATIONS.filter((d) => d.visible(canAdmin));
+  const visibleDestinations = NAV_DESTINATIONS.filter((d) =>
+    d.visible({ canAdmin, canUseSopBuilder }),
+  );
 
   return (
     <header className="sticky top-0 z-40 bg-kp-chrome border-b border-kp-chrome-border">

@@ -24,6 +24,9 @@ export interface AuthState {
   canManage: boolean;
   /* See everyone's results: managers plus the results-visibility roles. */
   canViewResults: boolean;
+  /* SOP Builder access: can create/record SOPs (own only) — admin-console flag
+   * canCreateSops, or manage-all, or a full manager. */
+  canUseSopBuilder: boolean;
   loading: boolean;
   error: string | null;
   signIn: () => Promise<void>;
@@ -46,6 +49,8 @@ interface UserDocData {
   hubRole?: string | null; // legacy role field
   appAccess?: Record<string, boolean>;
   canManageKnowledgeTests?: boolean;
+  canCreateSops?: boolean;
+  canManageAllSops?: boolean;
   branch?: string | null;
 }
 
@@ -137,6 +142,7 @@ export function useAuth(): AuthState {
       canTake: true,
       canManage: true,
       canViewResults: true,
+      canUseSopBuilder: true,
       loading: false,
       error: null,
       signIn: noop,
@@ -154,6 +160,10 @@ export function useAuth(): AuthState {
     isLegacyAdmin || canManageByRole(role) || userDoc?.canManageKnowledgeTests === true;
   const canTake = canManage || userDoc?.appAccess?.knowledge === true;
   const canViewResults = canManage || canViewResultsByRole(role);
+  const canUseSopBuilder =
+    canManage ||
+    userDoc?.canCreateSops === true ||
+    userDoc?.canManageAllSops === true;
 
-  return { user, role, branch: userDoc?.branch ?? null, canTake, canManage, canViewResults, loading, error, signIn, signOut };
+  return { user, role, branch: userDoc?.branch ?? null, canTake, canManage, canViewResults, canUseSopBuilder, loading, error, signIn, signOut };
 }

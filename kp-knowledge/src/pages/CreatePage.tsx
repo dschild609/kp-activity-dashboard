@@ -8,20 +8,23 @@ type Tab = "ai" | "sop";
 
 export function CreatePage() {
   const authed = useOutletContext<AuthState>();
-  const [tab, setTab] = useState<Tab>("ai");
 
-  if (!authed.canManage) {
+  // "Create with AI" is for test-managers; "SOP Builder" for SOP creators.
+  const tabs: Array<{ key: Tab; label: string }> = [
+    ...(authed.canManage ? [{ key: "ai" as Tab, label: "✨ Create with AI" }] : []),
+    ...(authed.canUseSopBuilder ? [{ key: "sop" as Tab, label: "SOP Builder" }] : []),
+  ];
+
+  const [tab, setTab] = useState<Tab>(authed.canManage ? "ai" : "sop");
+
+  if (tabs.length === 0) {
     return (
       <main className="max-w-4xl mx-auto px-6 py-16 text-center text-[14px] text-kp-text-muted">
         You don't have access to the create area.
       </main>
     );
   }
-
-  const tabs: Array<{ key: Tab; label: string }> = [
-    { key: "ai", label: "✨ Create with AI" },
-    { key: "sop", label: "SOP Builder" },
-  ];
+  const activeTab = tabs.some((t) => t.key === tab) ? tab : tabs[0].key;
 
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
@@ -41,7 +44,7 @@ export function CreatePage() {
             type="button"
             onClick={() => setTab(t.key)}
             className={`shrink-0 whitespace-nowrap rounded-lg border px-3.5 py-2 text-[13.5px] font-semibold transition-colors ${
-              tab === t.key
+              activeTab === t.key
                 ? "bg-kp-navy text-white border-kp-navy"
                 : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
             }`}
@@ -51,8 +54,8 @@ export function CreatePage() {
         ))}
       </div>
 
-      {tab === "ai" && <AiCreateAdmin />}
-      {tab === "sop" && <SopBuilder />}
+      {activeTab === "ai" && <AiCreateAdmin />}
+      {activeTab === "sop" && <SopBuilder />}
     </main>
   );
 }

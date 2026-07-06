@@ -14,6 +14,7 @@
 // (mark current assignments already-notified, to avoid a retroactive blast).
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 import * as admin from "firebase-admin";
 import { managerEndpoint, loadRoster } from "./shared";
@@ -391,5 +392,72 @@ export const runKnowledgeReminders = managerEndpoint(
     }
     const { sent, failed } = await deliver(db, apiKey, plan, today);
     res.json({ ok: true, mode: "send", candidates: plan.length, sent, failed, appUrl: APP_URL });
+  }
+);
+
+/* ── Instant notify on assignment ────────────────────────────────────
+ * Fires the "assigned" email the moment a test's assignment is saved (or a
+ * test goes live while already assigned) — so staff don't wait for the
+ * daily 8am pass. Shares the same /knowledgeNotifications dedup, so the
+ * scheduled job never re-sends what this already sent. Only genuine
+ * assignment changes act (slide/metadata edits are no-ops); each newly
+ * assigned person is emailed once. */
+export const knowledgeAssignmentNotify = onDocumentWritten(
+  {
+    document: "knowledgeTests/{testId}",
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 120,
+    secrets: [SENDGRID_API_KEY],
+  },
+  async (event) => {
+    const after = event.data?.after?.data();
+    if (!after) return; // deleted
+    const before = event.data?.before?.data();
+
+    const assignment = after.assignment as Assignment | undefined;
+    // Reminders target published + assigned tests only (an inactive draft
+    // can't be taken yet, so there's nothing to notify about).
+    if (after.isActive !== true || !assignment || !isAssigned(assignment)) return;
+
+    // Skip slide/metadata edits — act only when the assignment actually
+    // changed, or the test just went live while already assigned.
+    const assignmentChanged =
+      JSON.stringify(before?.assignment ?? null) !== JSON.stringify(assignment);
+    const becamePublished = before?.isActive !== true;
+    if (!assignmentChanged && !becamePublished) return;
+
+    const apiKey = process.env.SENDGRID_API_KEY;
+    if (!apiKey) {
+      logger.warn("[knowledge-reminders] assignment notify: SENDGRID_API_KEY not bound");
+      return;
+    }
+
+    const db = admin.firestore();
+    const today = chicagoToday();
+    const test = {
+      id: event.params.testId,
+      name: (after.name as string) ?? "a training",
+      assignment,
+    };
+    const [takers, passed, states] = await Promise.all([
+      loadTakers(db),
+      loadPassed(db),
+      loadStates(db),
+    ]);
+    const plan: Planned[] = [];
+    for (const person of resolveAssigned(assignment, takers)) {
+      if (passed.has(`${test.id}__${person.uid}`)) continue;
+      const p = decide(test, person, states.get(`${test.id}__${person.uid}`) ?? {}, today);
+      if (p) plan.push(p);
+    }
+    if (!plan.length) return;
+    const { sent, failed } = await deliver(db, apiKey, plan, today);
+    logger.info("[knowledge-reminders] assignment notify", {
+      testId: test.id,
+      candidates: plan.length,
+      sent,
+      failed,
+    });
   }
 );

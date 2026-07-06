@@ -12,6 +12,7 @@ import {
   listSops,
   patchSop,
   publishSop,
+  verifySop,
 } from "./api";
 import type { Sop, SopDetail, SopStatus, Step } from "./types";
 import { StatusPill } from "./StatusPill";
@@ -116,7 +117,15 @@ function Catalog({ onOpen }: { onOpen: (id: string) => void }) {
               <span className="font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-white/70">
                 {sop.system || "—"}
               </span>
-              <span className="ml-auto">
+              <span className="ml-auto flex items-center gap-1.5">
+                {sop.needsReview && (
+                  <span
+                    title={`Due for review${sop.nextReviewAt ? ` (${sop.nextReviewAt})` : ""}`}
+                    className="text-[9px] font-bold uppercase tracking-wider text-white bg-kp-crimson rounded-full px-1.5 py-0.5"
+                  >
+                    ⚠ Review
+                  </span>
+                )}
                 <StatusPill status={sop.status} />
               </span>
             </div>
@@ -165,6 +174,8 @@ interface Meta {
   overview: string;
   whyItMatters: string;
   bottomLine: string;
+  ownerEmail: string;
+  reviewIntervalDays: number;
 }
 
 function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
@@ -177,6 +188,7 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
 
   const [reviewed, setReviewed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -195,6 +207,8 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
           overview: d.overview ?? "",
           whyItMatters: d.whyItMatters ?? "",
           bottomLine: d.bottomLine ?? "",
+          ownerEmail: d.ownerEmail ?? d.creatorEmail ?? "",
+          reviewIntervalDays: d.reviewIntervalDays ?? 90,
         });
         setSteps([...d.steps].sort((a, b) => a.order - b.order));
         setDirty(false);
@@ -270,6 +284,7 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
           blurBoxes: s.blurBoxes,
           annotations: s.annotations ?? [],
           crop: s.crop ?? null,
+          focus: s.focus ?? true,
         })),
       });
       setDirty(false);
@@ -278,6 +293,23 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
       setActionError((e as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Confirm the SOP is still accurate without re-publishing — clears "Needs
+  // review" and pushes the next review date out by the interval.
+  async function markVerified() {
+    setVerifying(true);
+    setActionError(null);
+    setMessage(null);
+    try {
+      await verifySop(sopId);
+      setMessage("Marked verified — next review scheduled");
+      load();
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setVerifying(false);
     }
   }
 
@@ -389,6 +421,63 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
                   <MetaField label="Branch" value={meta.branch} onChange={(v) => editMeta({ branch: v })} />
                   <MetaField label="Task" value={meta.task} onChange={(v) => editMeta({ task: v })} />
                 </div>
+              </div>
+
+              {/* Review lifecycle — owner, cadence, last-verified (anti-staleness) */}
+              <div
+                className={`rounded-xl border p-4 mb-6 ${
+                  detail.needsReview
+                    ? "border-kp-crimson-soft bg-kp-crimson-soft/40"
+                    : "border-kp-border bg-kp-surface"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="kp-kicker !border-l-0 !pl-0">Review &amp; ownership</span>
+                  {detail.needsReview && (
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-kp-crimson-soft-text bg-kp-crimson-soft rounded-full px-2 py-0.5">
+                      ⚠ Due for review
+                    </span>
+                  )}
+                </div>
+                <div className="grid sm:grid-cols-3 gap-3 items-end">
+                  <MetaField
+                    label="Owner (keeps it current)"
+                    value={meta.ownerEmail}
+                    onChange={(v) => editMeta({ ownerEmail: v })}
+                  />
+                  <label className="block">
+                    <span className="block text-[11px] font-mono uppercase tracking-wider text-kp-text-muted mb-1">
+                      Review every
+                    </span>
+                    <select
+                      value={meta.reviewIntervalDays}
+                      onChange={(e) => editMeta({ reviewIntervalDays: Number(e.target.value) })}
+                      className="w-full px-3 py-2 text-[13.5px] bg-kp-surface border border-kp-border rounded-lg focus-kp"
+                    >
+                      {[30, 60, 90, 180, 365].map((d) => (
+                        <option key={d} value={d}>
+                          {d === 365 ? "1 year" : `${d} days`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={markVerified}
+                    disabled={verifying}
+                    className="px-4 py-2 text-[13px] font-bold text-white bg-kp-navy rounded-lg hover:bg-kp-navy/90 disabled:opacity-50"
+                  >
+                    {verifying ? "Marking…" : "✓ Mark reviewed"}
+                  </button>
+                </div>
+                <p className="mt-2.5 text-[12px] text-kp-text-muted">
+                  {detail.lastVerifiedAt
+                    ? `Last verified ${detail.lastVerifiedAt}`
+                    : "Not yet verified"}
+                  {detail.nextReviewAt && ` · next review due ${detail.nextReviewAt}`}
+                  {". "}
+                  Owner/cadence changes save with the SOP; “Mark reviewed” applies immediately.
+                </p>
               </div>
 
               <h2 className="kp-kicker mb-4">Steps</h2>

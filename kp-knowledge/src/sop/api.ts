@@ -82,6 +82,14 @@ export function publishSop(id: string): Promise<{ ok: boolean }> {
   return req(`/sops/${id}/publish`, { method: "POST" });
 }
 
+// Mark the SOP reviewed & still-accurate now (clears "Needs review" without
+// re-publishing). Returns the new lastVerifiedAt / nextReviewAt.
+export function verifySop(
+  id: string,
+): Promise<{ ok: boolean; lastVerifiedAt: string; nextReviewAt: string | null }> {
+  return req(`/sops/${id}/verify`, { method: "POST" });
+}
+
 export function deleteSop(id: string): Promise<{ ok: boolean }> {
   return req(`/sops/${id}`, { method: "DELETE" });
 }

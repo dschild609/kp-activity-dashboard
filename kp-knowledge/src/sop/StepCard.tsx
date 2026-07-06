@@ -46,6 +46,9 @@ export function StepCard({
     }
   }
 
+  const hasBox = !!step.elementDescriptor?.boxNorm;
+  const focusOn = step.focus ?? true;
+
   const editorProps = {
     imageUrl: step.screenshotDownloadUrl,
     boxes: step.blurBoxes,
@@ -83,7 +86,7 @@ export function StepCard({
       <div className="p-4 grid md:grid-cols-2 gap-4">
         <div>
           <BlurEditor {...editorProps} />
-          <div className="mt-2 flex items-center gap-3">
+          <div className="mt-2 flex items-center gap-3 flex-wrap">
             {step.screenshotDownloadUrl && (
               <button
                 type="button"
@@ -103,6 +106,33 @@ export function StepCard({
               </button>
             )}
           </div>
+          {hasBox && (
+            <label
+              className="mt-2 flex items-center gap-2 text-[12px] text-kp-text-muted select-none"
+              title={
+                step.crop
+                  ? "A manual snip is set, so it's used instead of auto-zoom."
+                  : "On publish, zoom the screenshot to the clicked control and add a numbered badge."
+              }
+            >
+              <input
+                type="checkbox"
+                checked={focusOn && !step.crop}
+                disabled={!!step.crop}
+                onChange={(e) => onChange({ focus: e.target.checked })}
+                className="accent-kp-crimson disabled:opacity-40"
+              />
+              <span className={step.crop ? "opacity-50" : ""}>
+                🔍 Zoom to clicked control{" "}
+                <span className="inline-grid place-items-center w-4 h-4 rounded-full bg-kp-crimson text-white text-[9px] font-bold align-middle">
+                  {index + 1}
+                </span>
+              </span>
+              {step.crop && (
+                <span className="text-kp-text-faint">— overridden by your snip</span>
+              )}
+            </label>
+          )}
         </div>
 
         <div className="space-y-3">

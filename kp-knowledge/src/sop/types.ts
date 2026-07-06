@@ -31,6 +31,7 @@ export interface ElementDescriptor {
   text: string;
   ariaLabel: string;
   bbox: { x: number; y: number; w: number; h: number } | null;
+  boxNorm?: { x: number; y: number; w: number; h: number }; // normalized 0–1
 }
 
 export interface Step {
@@ -46,6 +47,7 @@ export interface Step {
   blurBoxes: BlurBox[];
   annotations?: Annotation[];
   crop?: Crop | null;
+  focus?: boolean; // auto-zoom to the clicked control on publish (default true)
 }
 
 export interface Sop {
@@ -62,6 +64,12 @@ export interface Sop {
   videoUrl: string;
   version: number;
   processingError?: string;
+  // Review lifecycle (anti-staleness).
+  ownerEmail?: string;
+  lastVerifiedAt?: string | null; // ISO date
+  reviewIntervalDays?: number;
+  nextReviewAt?: string | null; // ISO date
+  needsReview?: boolean; // computed server-side: nextReviewAt has passed
 }
 
 export interface SopDetail extends Sop {
@@ -77,6 +85,7 @@ export interface StepPatch {
   blurBoxes: BlurBox[];
   annotations: Annotation[];
   crop?: Crop | null;
+  focus?: boolean;
 }
 
 export interface SopPatch {
@@ -87,5 +96,7 @@ export interface SopPatch {
   overview?: string;
   whyItMatters?: string;
   bottomLine?: string;
+  ownerEmail?: string;
+  reviewIntervalDays?: number;
   steps?: StepPatch[];
 }

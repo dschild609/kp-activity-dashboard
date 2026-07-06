@@ -29,8 +29,12 @@ export function renderEmail(args: {
   heading: string;
   bodyLines: string[];
   dueLine?: string | null;
+  ctaUrl?: string; // defaults to the app home
+  ctaLabel?: string; // defaults to "Open KP Knowledge →"
 }): string {
   const tone = TONE[args.tone];
+  const ctaUrl = args.ctaUrl ?? APP_URL;
+  const ctaLabel = args.ctaLabel ?? "Open KP Knowledge →";
   const paras = args.bodyLines
     .map((l) => `<p style="font-size:15px;line-height:1.5;margin:0 0 12px;color:#0b141b;">${l}</p>`)
     .join("");
@@ -51,7 +55,7 @@ export function renderEmail(args: {
       )}</h1>
       ${paras}
       ${due}
-      <a href="${APP_URL}" style="display:inline-block;background:#ea580c;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:11px 22px;border-radius:10px;margin-top:4px;">Open KP Knowledge →</a>
+      <a href="${ctaUrl}" style="display:inline-block;background:#ea580c;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:11px 22px;border-radius:10px;margin-top:4px;">${escapeHtml(ctaLabel)}</a>
       <p style="font-size:12px;color:#6b7280;margin:22px 0 0;border-top:1px solid #eef0f3;padding-top:14px;">
         You're receiving this because this training is assigned to you in KP Knowledge. Questions? Contact your admin.
       </p>

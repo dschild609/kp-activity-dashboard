@@ -21,10 +21,11 @@ export function AssignmentEditor({
 }) {
   const [personQuery, setPersonQuery] = useState("");
 
-  const assignedCount = useMemo(
-    () => resolveAssigned(assignment, roster).length,
+  const assignedPeople = useMemo(
+    () => resolveAssigned(assignment, roster).slice().sort((a, b) => a.name.localeCompare(b.name)),
     [assignment, roster]
   );
+  const assignedCount = assignedPeople.length;
   const pickedPeople = useMemo(
     () => roster.filter((u) => assignment.uids.includes(u.uid)),
     [roster, assignment.uids]
@@ -182,6 +183,20 @@ export function AssignmentEditor({
           </>
         )}
       </div>
+
+      {assignedCount > 0 && (
+        <div className="border border-kp-border-soft rounded-lg max-h-56 overflow-y-auto divide-y divide-kp-border-soft">
+          {assignedPeople.map((u) => (
+            <div key={u.uid} className="px-3 py-1.5">
+              <div className="text-[13px] font-semibold text-kp-text truncate">{u.name}</div>
+              <div className="text-[11.5px] text-kp-text-faint truncate">
+                {roleLabel(u.role)}
+                {u.branch ? ` · ${u.branch}` : ""} · {u.email}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -208,6 +208,8 @@ interface Meta {
   overview: string;
   whyItMatters: string;
   bottomLine: string;
+  watchOut: string;
+  goDeeper: string;
   ownerEmail: string;
   reviewIntervalDays: number;
 }
@@ -241,6 +243,8 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
           overview: d.overview ?? "",
           whyItMatters: d.whyItMatters ?? "",
           bottomLine: d.bottomLine ?? "",
+          watchOut: d.watchOut ?? "",
+          goDeeper: d.goDeeper ?? "",
           ownerEmail: d.ownerEmail ?? d.creatorEmail ?? "",
           reviewIntervalDays: d.reviewIntervalDays ?? 90,
         });
@@ -458,6 +462,30 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
                     />
                   </label>
                 </div>
+                <label className="block">
+                  <span className="block text-[11px] font-mono uppercase tracking-wider text-kp-text-muted mb-1">
+                    Watch out (pitfall → note box)
+                  </span>
+                  <textarea
+                    value={meta.watchOut}
+                    onChange={(e) => editMeta({ watchOut: e.target.value })}
+                    placeholder="The one mistake to avoid — renders as a crimson warning box"
+                    rows={2}
+                    className="w-full px-3 py-2 text-[13px] bg-kp-surface border border-kp-border rounded-lg focus-kp resize-y"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-[11px] font-mono uppercase tracking-wider text-kp-text-muted mb-1">
+                    Go deeper (opt-in detail)
+                  </span>
+                  <textarea
+                    value={meta.goDeeper}
+                    onChange={(e) => editMeta({ goDeeper: e.target.value })}
+                    placeholder={"Exhaustive/edge-case detail kept out of the steps. Bullets: start a line with “- **Term** — definition”."}
+                    rows={4}
+                    className="w-full px-3 py-2 text-[13px] bg-kp-surface border border-kp-border rounded-lg focus-kp resize-y font-mono"
+                  />
+                </label>
                 <div className="grid sm:grid-cols-3 gap-3">
                   <MetaField label="System" value={meta.system} onChange={(v) => editMeta({ system: v })} />
                   <MetaField label="Branch" value={meta.branch} onChange={(v) => editMeta({ branch: v })} />

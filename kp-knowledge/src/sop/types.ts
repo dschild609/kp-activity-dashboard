@@ -61,6 +61,8 @@ export interface Sop {
   overview: string;
   whyItMatters?: string;
   bottomLine?: string;
+  watchOut?: string;
+  goDeeper?: string;
   videoUrl: string;
   version: number;
   processingError?: string;
@@ -96,6 +98,8 @@ export interface SopPatch {
   overview?: string;
   whyItMatters?: string;
   bottomLine?: string;
+  watchOut?: string;
+  goDeeper?: string;
   ownerEmail?: string;
   reviewIntervalDays?: number;
   steps?: StepPatch[];

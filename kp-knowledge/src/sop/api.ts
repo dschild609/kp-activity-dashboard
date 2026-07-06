@@ -6,9 +6,26 @@ import type { Sop, SopDetail, SopPatch } from "./types";
 
 const API_BASE = import.meta.env.VITE_SOP_API_BASE ?? "http://localhost:8080";
 
+// Never send the Firebase ID token anywhere but the known KP backend — guards
+// against a misbuilt/tampered VITE_SOP_API_BASE leaking the credential.
+function isTrustedApiBase(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return true;
+    return (
+      u.protocol === "https:" &&
+      u.hostname.startsWith("sop-recorder-") &&
+      u.hostname.endsWith(".run.app")
+    );
+  } catch {
+    return false;
+  }
+}
+const API_TRUSTED = isTrustedApiBase(API_BASE);
+
 async function authHeaders(): Promise<Record<string, string>> {
   const user = auth.currentUser;
-  if (!user) return {};
+  if (!user || !API_TRUSTED) return {};
   const token = await user.getIdToken();
   return { Authorization: `Bearer ${token}` };
 }

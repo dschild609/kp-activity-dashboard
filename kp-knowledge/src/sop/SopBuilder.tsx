@@ -18,6 +18,7 @@ import type { Sop, SopDetail, SopStatus, Step } from "./types";
 import { StatusPill } from "./StatusPill";
 import { StepCard } from "./StepCard";
 import { PublishBar } from "./PublishBar";
+import { auth } from "../lib/firebase";
 
 export function SopBuilder() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -39,6 +40,21 @@ function Catalog({ onOpen }: { onOpen: (id: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [tokenMsg, setTokenMsg] = useState<string | null>(null);
+
+  // Copy a FRESH Firebase ID token for pasting into the extension popup's Token
+  // field. Stopgap until the extension does its own Google sign-in — these
+  // tokens expire after ~1 hour, which is why an old paste starts failing.
+  async function copyExtensionToken() {
+    try {
+      const token = await auth.currentUser?.getIdToken(true);
+      if (!token) throw new Error("Not signed in");
+      await navigator.clipboard.writeText(token);
+      setTokenMsg("Token copied — paste it into the extension's Token field (good for ~1 hour).");
+    } catch (e) {
+      setTokenMsg(`Couldn't copy a token: ${(e as Error).message}`);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -67,9 +83,27 @@ function Catalog({ onOpen }: { onOpen: (id: string) => void }) {
   return (
     <div>
       <div className="rounded-xl border border-kp-border bg-kp-surface-alt p-4 mb-6 text-[13px] text-kp-text-muted">
-        <strong className="text-kp-text">Record a new SOP</strong> with the KP
-        SOP Recorder Chrome extension: click the KP icon on any web app, narrate
-        the process, then Stop. Drafts appear here to review, blur, and publish.
+        <div>
+          <strong className="text-kp-text">Record a new SOP</strong> with the KP
+          SOP Recorder Chrome extension: click the KP icon on any web app, narrate
+          the process, then Stop. Drafts appear here to review, blur, and publish.
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={copyExtensionToken}
+            className="px-3 py-1.5 text-[12.5px] font-semibold rounded-lg bg-kp-navy text-white hover:bg-kp-navy-hover"
+          >
+            🔑 Copy extension token
+          </button>
+          {tokenMsg ? (
+            <span className="text-[12px] text-kp-text-muted">{tokenMsg}</span>
+          ) : (
+            <span className="text-[12px] text-kp-text-faint">
+              If a recording won't upload, copy a fresh token and paste it into the extension.
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-2 mb-5 flex-wrap">

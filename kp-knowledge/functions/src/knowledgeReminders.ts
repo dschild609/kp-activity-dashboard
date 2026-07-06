@@ -31,6 +31,7 @@ interface Assignment {
   roles: string[];
   branches: string[];
   uids: string[];
+  excludeUids?: string[];
   dueDate: string | null;
 }
 
@@ -98,11 +99,13 @@ function isAssigned(a: Assignment): boolean {
  * people, limited to staff who can take tests. Mirrors the client's
  * resolveAssigned (src/lib/roster.ts). */
 function resolveAssigned(a: Assignment, takers: Taker[]): Taker[] {
-  if (a.everyone) return takers;
+  const excluded = new Set(a.excludeUids ?? []);
+  const pool = takers.filter((u) => !excluded.has(u.uid));
+  if (a.everyone) return pool;
   const uids = new Set(a.uids);
   const roles = new Set(a.roles);
   const branches = new Set(a.branches);
-  return takers.filter(
+  return pool.filter(
     (u) =>
       uids.has(u.uid) ||
       (u.role != null && roles.has(u.role)) ||

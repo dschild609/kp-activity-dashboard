@@ -10,6 +10,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -20,12 +21,32 @@ import {
   type AnswerKey,
   type GradedAnswer,
   type KnowledgeAttempt,
+  type KnowledgeOpen,
   type KnowledgeQuestion,
   type KnowledgeTest,
 } from "../types/knowledge";
 
 const TESTS = "knowledgeTests";
 const ATTEMPTS = "knowledgeAttempts";
+const OPENS = "knowledgeOpens";
+
+/* Record the first time this user opened a test (immutable — later opens are
+ * a no-op). Best-effort: never blocks or throws into the taker's flow. */
+export async function recordOpen(testId: string, uid: string): Promise<void> {
+  try {
+    const ref = doc(db, OPENS, `${testId}__${uid}`);
+    if ((await getDoc(ref)).exists()) return;
+    await setDoc(ref, { uid, testId, openedAt: serverTimestamp() });
+  } catch {
+    /* opens are analytics-only — swallow (e.g. a lost race on first open) */
+  }
+}
+
+/* Every open record (manager-only read via rules) — for the completion view. */
+export async function listOpens(): Promise<KnowledgeOpen[]> {
+  const snap = await getDocs(collection(db, OPENS));
+  return snap.docs.map((d) => d.data() as KnowledgeOpen);
+}
 
 function testFromDoc(id: string, data: Record<string, unknown>): KnowledgeTest {
   return {
@@ -38,6 +59,7 @@ function testFromDoc(id: string, data: Record<string, unknown>): KnowledgeTest {
       roles: [],
       branches: [],
       uids: [],
+      excludeUids: [],
       dueDate: null,
       ...((data.assignment as Partial<KnowledgeTest["assignment"]>) ?? {}),
     },

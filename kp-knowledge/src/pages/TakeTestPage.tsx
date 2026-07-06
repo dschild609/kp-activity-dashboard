@@ -8,6 +8,7 @@ import {
   getTest,
   gradeAnswers,
   listAttempts,
+  recordOpen,
   submitAttempt,
   type GradeResult,
 } from "../lib/knowledge";
@@ -98,6 +99,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
           setState({ phase: "error", message: "Test not found or inactive." });
           return;
         }
+        void recordOpen(testId, user.uid); // best-effort "opened" timestamp
         const gate = attemptGate(test, attempts);
         if (!gate.canTake) {
           setState({ phase: "blocked", reason: gate.reason!, test });

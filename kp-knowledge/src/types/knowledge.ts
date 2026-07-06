@@ -105,6 +105,9 @@ export interface Assignment {
   roles: string[];
   branches: string[];
   uids: string[];
+  /* People removed individually even though a role/branch/everyone would
+   * otherwise match them — lets an admin drop one person from the roster. */
+  excludeUids: string[];
   /* Optional due date as an ISO date string "YYYY-MM-DD"; null = no due date. */
   dueDate: string | null;
 }
@@ -114,6 +117,7 @@ export const EMPTY_ASSIGNMENT: Assignment = {
   roles: [],
   branches: [],
   uids: [],
+  excludeUids: [],
   dueDate: null,
 };
 
@@ -179,4 +183,12 @@ export interface KnowledgeAttempt {
   totalCount: number;
   answers: Record<string, GradedAnswer>;
   submittedAt: Timestamp | null;
+}
+
+/* First time an employee opened a test to take it (immutable). Powers the
+ * "Opened" column in the completion view. Doc id is `${testId}__${uid}`. */
+export interface KnowledgeOpen {
+  uid: string;
+  testId: string;
+  openedAt: Timestamp | null;
 }

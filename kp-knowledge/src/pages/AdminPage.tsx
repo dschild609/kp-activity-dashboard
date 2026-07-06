@@ -6,6 +6,7 @@ import {
   isAssigned,
   type Assignment,
   type KnowledgeAttempt,
+  type KnowledgeOpen,
   type KnowledgeTest,
 } from "../types/knowledge";
 import { daysUntil, formatDue, getRoster, resolveAssigned, roleLabel, type RosterUser } from "../lib/roster";
@@ -20,6 +21,7 @@ import {
   deleteAttempt,
   deleteTest,
   listAttempts,
+  listOpens,
   listTests,
   updateTest,
 } from "../lib/knowledge";
@@ -591,6 +593,7 @@ interface PersonRow {
   status: CompletionStatus;
   bestScore: number | null;
   lastAt: Date | null;
+  openedAt: Date | null;
 }
 interface TestCompletion {
   test: KnowledgeTest;
@@ -599,10 +602,16 @@ interface TestCompletion {
   total: number;
 }
 
+/* Compact "opened" stamp, e.g. "Jul 5, 2:30 PM". */
+function fmtOpened(d: Date): string {
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 function AssignmentsAdmin() {
   const [roster, setRoster] = useState<RosterUser[] | null>(null);
   const [tests, setTests] = useState<KnowledgeTest[] | null>(null);
   const [attempts, setAttempts] = useState<KnowledgeAttempt[] | null>(null);
+  const [opens, setOpens] = useState<KnowledgeOpen[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [branchFilter, setBranchFilter] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -614,11 +623,28 @@ function AssignmentsAdmin() {
   const [reminderErr, setReminderErr] = useState<string | null>(null);
 
   const reload = useCallback(() => {
-    Promise.all([getRoster(), listTests({ activeOnly: false }), listAttempts({})])
-      .then(([r, t, a]) => { setRoster(r); setTests(t); setAttempts(a); })
+    Promise.all([getRoster(), listTests({ activeOnly: false }), listAttempts({}), listOpens()])
+      .then(([r, t, a, o]) => { setRoster(r); setTests(t); setAttempts(a); setOpens(o); })
       .catch((e) => setError((e as Error).message));
   }, []);
   useEffect(() => { reload(); }, [reload]);
+
+  async function removePerson(test: KnowledgeTest, uid: string, name: string) {
+    if (!window.confirm(`Remove ${name} from "${test.name}"? They can still take it, but won't be tracked or reminded.`)) return;
+    const a = test.assignment;
+    try {
+      await updateTest(test.id, {
+        assignment: {
+          ...a,
+          uids: a.uids.filter((x) => x !== uid),
+          excludeUids: [...new Set([...(a.excludeUids ?? []), uid])],
+        },
+      });
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   async function removeAssignment(test: KnowledgeTest) {
     if (
@@ -668,7 +694,7 @@ function AssignmentsAdmin() {
   }
 
   const completion = useMemo<TestCompletion[]>(() => {
-    if (!roster || !tests || !attempts) return [];
+    if (!roster || !tests || !attempts || !opens) return [];
     // attempts keyed by testId → uid → best
     const byTestUser = new Map<string, Map<string, { passed: boolean; score: number; at: Date | null }>>();
     for (const a of attempts) {
@@ -680,6 +706,9 @@ function AssignmentsAdmin() {
       }
       byTestUser.set(a.testId, m);
     }
+    // first-open keyed by `${testId}__${uid}`
+    const openByKey = new Map<string, Date>();
+    for (const o of opens) if (o.openedAt) openByKey.set(`${o.testId}__${o.uid}`, o.openedAt.toDate());
     return tests
       .filter((t) => t.status === "published" && isAssigned(t.assignment))
       .map((test) => {
@@ -692,13 +721,19 @@ function AssignmentsAdmin() {
             : rec
               ? "attempted"
               : "not-started";
-          return { user, status, bestScore: rec?.score ?? null, lastAt: rec?.at ?? null };
+          return {
+            user,
+            status,
+            bestScore: rec?.score ?? null,
+            lastAt: rec?.at ?? null,
+            openedAt: openByKey.get(`${test.id}__${user.uid}`) ?? null,
+          };
         });
         rows.sort((a, b) => a.user.name.localeCompare(b.user.name));
         return { test, rows, done: rows.filter((r) => r.status === "completed").length, total: rows.length };
       })
       .sort((a, b) => a.test.name.localeCompare(b.test.name));
-  }, [roster, tests, attempts]);
+  }, [roster, tests, attempts, opens]);
 
   const branches = useMemo(
     () => [...new Set((roster ?? []).map((u) => u.branch).filter(Boolean))].sort() as string[],
@@ -721,14 +756,15 @@ function AssignmentsAdmin() {
   }
 
   function exportCsv() {
-    const head = ["Test", "Person", "Email", "Branch", "Role", "Status", "Best %", "Last attempt"];
+    const head = ["Test", "Person", "Email", "Branch", "Role", "Status", "Opened", "Best %", "Last attempt"];
     const lines = [head];
     for (const tc of completion)
       for (const r of tc.rows.filter((r) => !branchFilter || r.user.branch === branchFilter)) {
         if (!showAll && r.status === "completed") continue;
         lines.push([
           tc.test.name, r.user.name, r.user.email, r.user.branch ?? "", roleLabel(r.user.role),
-          r.status, r.bestScore != null ? `${r.bestScore}` : "", r.lastAt ? r.lastAt.toLocaleString() : "",
+          r.status, r.openedAt ? r.openedAt.toLocaleString() : "",
+          r.bestScore != null ? `${r.bestScore}` : "", r.lastAt ? r.lastAt.toLocaleString() : "",
         ]);
       }
     const csv = lines.map((r) => r.map((c) => `"${c.replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -744,11 +780,11 @@ function AssignmentsAdmin() {
     <section>
       <h2 className="kp-kicker mb-4">Assignment Completion</h2>
       {error && <NoticeBox tone="bad" className="mb-4">{error}</NoticeBox>}
-      {(!roster || !tests || !attempts) && !error && (
+      {(!roster || !tests || !attempts || !opens) && !error && (
         <div className="text-[14px] text-kp-text-muted">Loading roster and results…</div>
       )}
 
-      {roster && tests && attempts && (
+      {roster && tests && attempts && opens && (
         <>
           <div className="flex flex-wrap items-center gap-3 mb-5">
             <div className="text-[13.5px] text-kp-text-muted">
@@ -834,14 +870,16 @@ function AssignmentsAdmin() {
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
-                    <table className="w-full min-w-[560px] text-[13.5px]">
+                    <table className="w-full min-w-[680px] text-[13.5px]">
                       <thead>
                         <tr className="bg-kp-surface-alt border-b border-kp-border-strong">
                           <Th>Person</Th>
                           <Th>Branch</Th>
                           <Th>Role</Th>
                           <Th>Status</Th>
+                          <Th>Opened</Th>
                           <Th align="right">Best</Th>
+                          <Th><span className="sr-only">Remove</span></Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -862,8 +900,22 @@ function AssignmentsAdmin() {
                                 <Pill tone="bad">Not started</Pill>
                               )}
                             </td>
+                            <td className="px-4 py-2.5 text-[12.5px] text-kp-text-muted whitespace-nowrap">
+                              {r.openedAt ? fmtOpened(r.openedAt) : "—"}
+                            </td>
                             <td className="px-4 py-2.5 text-right text-kp-text-muted">
                               {r.bestScore != null ? `${r.bestScore}%` : "—"}
+                            </td>
+                            <td className="px-2 py-2.5 text-right">
+                              <button
+                                type="button"
+                                onClick={() => removePerson(tc.test, r.user.uid, r.user.name)}
+                                className="text-kp-text-faint hover:text-kp-bad text-[13px] px-1"
+                                title={`Remove ${r.user.name} from this assignment`}
+                                aria-label={`Remove ${r.user.name}`}
+                              >
+                                ✕
+                              </button>
                             </td>
                           </tr>
                         ))}

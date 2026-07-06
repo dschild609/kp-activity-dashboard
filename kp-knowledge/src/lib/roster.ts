@@ -21,7 +21,8 @@ export async function getRoster(): Promise<RosterUser[]> {
  * roles / branches / specific people, limited to people who can take tests
  * (appAccess.knowledge). Used for the assignment summary + completion view. */
 export function resolveAssigned(a: Assignment, roster: RosterUser[]): RosterUser[] {
-  const takers = roster.filter((u) => u.knowledge);
+  const excluded = new Set(a.excludeUids ?? []);
+  const takers = roster.filter((u) => u.knowledge && !excluded.has(u.uid));
   if (a.everyone) return takers;
   const uids = new Set(a.uids);
   const roles = new Set(a.roles);
@@ -46,6 +47,7 @@ export function assignmentMatchesUser(
   a: Assignment,
   ctx: { uid: string; role: string | null; branch: string | null }
 ): boolean {
+  if ((a.excludeUids ?? []).includes(ctx.uid)) return false;
   if (a.everyone) return true;
   if (a.uids.includes(ctx.uid)) return true;
   const role = normalizeRole(ctx.role);

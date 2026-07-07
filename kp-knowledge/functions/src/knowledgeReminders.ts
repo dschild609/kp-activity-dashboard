@@ -46,8 +46,9 @@ interface Taker {
 interface NotifState {
   dueDate?: string | null;
   assignedAt?: string;
-  dueSoonAt?: string;
-  overdueAt?: string;
+  // null = "not sent" (stored explicitly — Firestore rejects `undefined`).
+  dueSoonAt?: string | null;
+  overdueAt?: string | null;
 }
 
 interface Planned {
@@ -199,8 +200,8 @@ export function decide(
   const nextState: Planned["nextState"] = {
     dueDate: due,
     assignedAt: st.assignedAt ?? today,
-    dueSoonAt: kind === "dueSoon" || kind === "overdue" ? today : rescheduled ? undefined : st.dueSoonAt,
-    overdueAt: kind === "overdue" ? today : rescheduled ? undefined : st.overdueAt,
+    dueSoonAt: kind === "dueSoon" || kind === "overdue" ? today : rescheduled ? null : st.dueSoonAt ?? null,
+    overdueAt: kind === "overdue" ? today : rescheduled ? null : st.overdueAt ?? null,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
   return {

@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import {
   EMPTY_ASSIGNMENT,
   isAssigned,
+  type AnswerKey,
   type Assignment,
   type KnowledgeAttempt,
   type KnowledgeOpen,
+  type KnowledgeQuestion,
   type KnowledgeTest,
 } from "../types/knowledge";
 import { daysUntil, formatDue, getRoster, resolveAssigned, roleLabel, type RosterUser } from "../lib/roster";
@@ -20,6 +22,7 @@ import {
 import {
   deleteAttempt,
   deleteTest,
+  getQuestions,
   listAttempts,
   listOpens,
   listTests,
@@ -1031,16 +1034,62 @@ function AssignmentSummary({ test }: { test: KnowledgeTest }) {
   );
 }
 
+/* The questions a person missed on an attempt — their answer vs. the correct
+ * one. Questions are passed in (lazily loaded + cached by ResultsAdmin). */
+function ReviewDetail({ attempt, questions }: { attempt: KnowledgeAttempt; questions?: KnowledgeQuestion[] }) {
+  if (!questions) return <div className="text-[13px] text-kp-text-muted">Loading questions…</div>;
+  const labelFor = (q: KnowledgeQuestion, key: AnswerKey | null): string => {
+    if (key == null) return "(left blank)";
+    const map: Record<AnswerKey, string | null> = { A: q.optionA, B: q.optionB, C: q.optionC, D: q.optionD };
+    return map[key] ?? key;
+  };
+  const answers = attempt.answers ?? {};
+  const wrong = questions.filter((q) => answers[q.id] && !answers[q.id].isCorrect);
+  if (wrong.length === 0) {
+    return <div className="text-[13px] font-semibold text-kp-good">Every answer was correct.</div>;
+  }
+  return (
+    <div className="space-y-2.5">
+      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-kp-text-faint">
+        Missed {wrong.length} of {attempt.totalCount}
+      </div>
+      {wrong.map((q) => {
+        const ans = answers[q.id];
+        return (
+          <div key={q.id} className="bg-kp-surface border border-kp-border rounded-lg p-3.5">
+            <div className="text-[13.5px] font-semibold text-kp-text mb-2">{q.text}</div>
+            <div className="text-[13px] text-kp-bad">✗ Answered: {labelFor(q, ans.given)}</div>
+            <div className="text-[13px] text-kp-good">✓ Correct: {labelFor(q, ans.correct)}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ResultsAdmin() {
   const [attempts, setAttempts] = useState<KnowledgeAttempt[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [personFilter, setPersonFilter] = useState("");
   const [testFilter, setTestFilter] = useState("");
+  // Expandable per-attempt review — questions loaded lazily + cached per test.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [questionsByTest, setQuestionsByTest] = useState<Record<string, KnowledgeQuestion[]>>({});
 
   const reload = useCallback(() => {
     listAttempts({}).then(setAttempts).catch((e) => setError((e as Error).message));
   }, []);
   useEffect(reload, [reload]);
+
+  function toggleReview(a: KnowledgeAttempt) {
+    if (expandedId === a.id) { setExpandedId(null); return; }
+    setExpandedId(a.id);
+    if (!questionsByTest[a.testId]) {
+      getQuestions(a.testId)
+        .then((qs) => setQuestionsByTest((m) => ({ ...m, [a.testId]: qs })))
+        .catch(() => setQuestionsByTest((m) => ({ ...m, [a.testId]: [] })));
+    }
+  }
 
   const visible = useMemo(() => {
     return (attempts ?? []).filter((a) => {
@@ -1136,10 +1185,13 @@ function ResultsAdmin() {
                   </td>
                 </tr>
               )}
-              {visible.map((a) => (
+              {visible.map((a) => {
+                const missed = a.totalCount - a.correctCount;
+                const open = expandedId === a.id;
+                return (
+                <Fragment key={a.id}>
                 <tr
-                  key={a.id}
-                  className={`border-b border-kp-border-soft last:border-0 ${
+                  className={`border-b border-kp-border-soft ${open ? "" : "last:border-0"} ${
                     a.passed
                       ? "shadow-[inset_3px_0_0_var(--color-kp-good)]"
                       : "shadow-[inset_3px_0_0_var(--color-kp-bad)]"
@@ -1160,11 +1212,29 @@ function ResultsAdmin() {
                   <td className="px-4 py-3 text-right text-kp-text-muted">
                     {a.submittedAt ? a.submittedAt.toDate().toLocaleDateString() : "—"}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {missed > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => toggleReview(a)}
+                        className="mr-2 px-2.5 py-1.5 text-[12.5px] font-semibold border border-kp-border rounded-lg text-kp-text-muted hover:bg-kp-surface-alt hover:text-kp-navy"
+                      >
+                        {open ? "Hide" : `Review (${missed})`}
+                      </button>
+                    )}
                     <SmallButton tone="danger" onClick={() => handleReset(a)}>Reset</SmallButton>
                   </td>
                 </tr>
-              ))}
+                {open && (
+                  <tr className="border-b border-kp-border-soft last:border-0">
+                    <td colSpan={7} className="px-4 py-4 bg-kp-surface-alt">
+                      <ReviewDetail attempt={a} questions={questionsByTest[a.testId]} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

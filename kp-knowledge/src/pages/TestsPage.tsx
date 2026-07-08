@@ -247,6 +247,14 @@ function TestCard({
               : "Start Test"}
           </Link>
         )}
+        {gate.reason === "passed" && (
+          <Link
+            to={`/tests/${test.id}?retake=1`}
+            className="inline-block px-4 py-2 text-[13.5px] font-semibold rounded-lg border border-kp-border text-kp-text-muted hover:text-kp-navy hover:bg-kp-surface-alt transition-colors"
+          >
+            Retake for practice ↻
+          </Link>
+        )}
         {!gate.canTake && gate.reason === "out-of-attempts" && (
           <div className="text-[12.5px] text-kp-text-faint">
             All {test.maxAttempts} attempts used — ask your admin for another.

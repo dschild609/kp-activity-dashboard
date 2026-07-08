@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { AnswerKey, KnowledgeQuestion, KnowledgeSlide, KnowledgeTest } from "../types/knowledge";
 import {
@@ -69,6 +69,10 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
   const { testId } = useParams<{ testId: string }>();
   const { user, canManage } = useOutletContext<AuthState>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // A voluntary retake (?retake=1) lets you take an already-passed test again
+  // for practice — the earlier passing attempt stays in your history.
+  const retake = searchParams.get("retake") === "1";
 
   const [state, setState] = useState<PageState>({ phase: "loading" });
   const [answers, setAnswers] = useState<Record<string, AnswerKey | null>>({});
@@ -115,7 +119,9 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
         }
         void recordOpen(testId, user.uid); // best-effort "opened" timestamp
         const gate = attemptGate(test, attempts);
-        if (!gate.canTake) {
+        // A voluntary retake overrides the "passed" lock (self-service practice);
+        // admin-controlled caps (single-used / out-of-attempts) still hold.
+        if (!gate.canTake && !(retake && gate.reason === "passed")) {
           setState({ phase: "blocked", reason: gate.reason!, test });
           return;
         }
@@ -131,7 +137,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
         setState({ phase: "error", message: (e as Error).message });
       }
     })();
-  }, [testId, user, preview, canManage]);
+  }, [testId, user, preview, canManage, retake]);
 
   const unanswered = useMemo(() => {
     if (state.phase !== "taking") return 0;
@@ -178,7 +184,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
     const copy: Record<Blocked, { title: string; body: string }> = {
       passed: {
         title: "Already passed ✓",
-        body: "You've passed this test — nothing more to do here.",
+        body: "You've passed this test. You can retake it any time for practice — your pass still counts.",
       },
       "single-used": {
         title: "Already completed",
@@ -194,6 +200,14 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
       <Centered>
         <div className="text-[15px] font-bold text-kp-text mb-1">{c.title}</div>
         <div className="text-kp-text-muted mb-4">{c.body}</div>
+        {state.reason === "passed" && (
+          <Link
+            to={`/tests/${state.test.id}?retake=1`}
+            className="inline-block px-5 py-2.5 mb-4 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[14px] font-bold rounded-lg"
+          >
+            Retake test ↻
+          </Link>
+        )}
         <BackLink />
       </Centered>
     );

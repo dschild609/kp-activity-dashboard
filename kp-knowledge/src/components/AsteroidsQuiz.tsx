@@ -687,27 +687,31 @@ export function AsteroidsQuiz({
         {phase === "dead" && (
           <Overlay>
             <div className="text-white text-center max-w-sm">
-              <div className="text-[24px] font-extrabold mb-1">Out of lives</div>
+              <div className="text-[26px] font-extrabold mb-1">Game Over</div>
               <p className="text-[13.5px] text-white/80 mb-4">
-                You answered {Object.keys(worldRef.current.answers).length} of {questions.length}. Keep flying, or
-                finish the rest as a normal quiz.
+                You answered {Object.keys(worldRef.current.answers).length} of {questions.length} before running
+                out of lives. Start over from the top, or finish the rest as a normal quiz.
               </p>
               <div className="flex flex-col sm:flex-row gap-2 justify-center">
                 <button
                   type="button"
                   onClick={() => {
+                    // full restart from question 1 (fresh score, lives, answers)
                     const g = worldRef.current;
+                    g.score = 0;
                     g.lives = livesBudget;
-                    g.ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, angle: -Math.PI / 2, invuln: 2.5, shield: false };
-                    g.bullets = [];
-                    setHud({ score: g.score, lives: g.lives });
-                    // resume: if a question is mid-answer, keep answering; else freeplay
-                    if (!g.answeredThisQ && g.rocks.some((r) => r.answerKey)) setPhaseBoth("answering");
-                    else enterReading(g.answeredThisQ ? g.qIndex + 1 : g.qIndex);
+                    g.answers = {};
+                    g.rocks = [];
+                    g.particles = [];
+                    g.power = { rapidUntil: 0, spreadUntil: 0 };
+                    g.ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, angle: -Math.PI / 2, invuln: 2, shield: false };
+                    setHud({ score: 0, lives: livesBudget });
+                    setReadingLeft(1);
+                    enterReading(0); // uses the live g.now, so the read timer is correct
                   }}
                   className="px-5 py-2.5 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[14px] font-bold rounded-lg"
                 >
-                  Keep playing ▶
+                  Start over ↻
                 </button>
                 <button
                   type="button"

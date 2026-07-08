@@ -24,6 +24,7 @@ interface NavDestination {
 const NAV_DESTINATIONS: NavDestination[] = [
   { label: "Tests", to: "/", end: true, visible: () => true },
   { label: "My Results", to: "/results", visible: () => true },
+  { label: "Leaderboard", to: "/leaderboard", visible: () => true },
   { label: "Admin", to: "/admin", visible: (f) => f.canAdmin },
   // Create hosts "Create with AI" (admins) and "SOP Builder" (SOP creators).
   { label: "Create", to: "/create", visible: (f) => f.canAdmin || f.canUseSopBuilder },

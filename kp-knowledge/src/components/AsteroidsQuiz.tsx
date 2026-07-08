@@ -171,12 +171,16 @@ export function AsteroidsQuiz({
   onComplete,
   onFallback,
   onExit,
+  onScore,
 }: {
   quiz: { questions: KnowledgeQuestion[] };
   test: KnowledgeTest;
   onComplete: (answers: Record<string, AnswerKey | null>) => void;
   onFallback: (answers: Record<string, AnswerKey | null>) => void;
   onExit: () => void;
+  // Fires with the final arcade score when a run ends (cleared OR game over),
+  // so the page can record it on the leaderboard. Best-of is handled downstream.
+  onScore?: (score: number) => void;
 }) {
   const questions = quiz.questions;
   // Lives = the test's wrong-answer budget: if they can miss N and still
@@ -346,8 +350,10 @@ export function AsteroidsQuiz({
     g.flash = { color: clean ? COLORS.good : COLORS.warn, until: g.now + 450 };
     setHud({ score: g.score, lives: g.lives });
     const last = g.qIndex >= questions.length - 1;
-    if (last) window.setTimeout(() => setPhaseBoth("complete"), 700);
-    else enterFreeplay();
+    if (last) {
+      onScore?.(g.score); // cleared the whole quiz — record the run
+      window.setTimeout(() => setPhaseBoth("complete"), 700);
+    } else enterFreeplay();
   }
   // Between-questions arcade break. At high levels this is where hostile
   // starships jump in; the final free-play summons the Core Personnel flagship.
@@ -393,6 +399,7 @@ export function AsteroidsQuiz({
     g.lives -= 1;
     setHud({ score: g.score, lives: g.lives });
     if (g.lives <= 0) {
+      onScore?.(g.score); // game over — record whatever they racked up
       setPhaseBoth("dead");
       return true;
     }

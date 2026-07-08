@@ -10,6 +10,7 @@ import {
   listAttempts,
   recordOpen,
   submitAttempt,
+  submitHighScore,
   type GradeResult,
 } from "../lib/knowledge";
 import { SlideView, sectionNumberAt } from "../components/SlideView";
@@ -214,6 +215,17 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
         test={state.test}
         quiz={state.quiz}
         onComplete={(a) => submitAnswers(a)}
+        onScore={(score) => {
+          // Record the arcade run on the global leaderboard (not in preview).
+          if (!preview && user) {
+            submitHighScore({
+              uid: user.uid,
+              userName: user.displayName ?? user.email ?? "Unknown",
+              score,
+              test: gstate.test,
+            });
+          }
+        }}
         onFallback={(a) => {
           setAnswers(a);
           setState({ ...gstate, phase: "taking" });

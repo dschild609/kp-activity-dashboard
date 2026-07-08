@@ -185,6 +185,19 @@ export interface KnowledgeAttempt {
   submittedAt: Timestamp | null;
 }
 
+/* One row per user on the global Asteroids high-score leaderboard — their
+ * personal best across any test. Doc id is the user's uid (best-of upsert).
+ * `score` is arcade points, not a pass percentage. */
+export interface KnowledgeLeaderboardEntry {
+  id: string; // = uid
+  uid: string;
+  userName: string;
+  score: number;
+  testId: string;
+  testName: string;
+  updatedAt: Timestamp | null;
+}
+
 /* First time an employee opened a test to take it (immutable). Powers the
  * "Opened" column in the completion view. Doc id is `${testId}__${uid}`. */
 export interface KnowledgeOpen {

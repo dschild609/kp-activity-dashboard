@@ -21,6 +21,7 @@ import {
   type AnswerKey,
   type GradedAnswer,
   type KnowledgeAttempt,
+  type KnowledgeLeaderboardEntry,
   type KnowledgeOpen,
   type KnowledgeQuestion,
   type KnowledgeTest,
@@ -29,6 +30,7 @@ import {
 const TESTS = "knowledgeTests";
 const ATTEMPTS = "knowledgeAttempts";
 const OPENS = "knowledgeOpens";
+const LEADERBOARD = "knowledgeLeaderboard";
 
 /* Record the first time this user opened a test (immutable — later opens are
  * a no-op). Best-effort: never blocks or throws into the taker's flow. */
@@ -163,6 +165,43 @@ export async function submitAttempt(args: {
     answers: args.result.graded,
     submittedAt: serverTimestamp(),
   });
+}
+
+/* ── Asteroids leaderboard ───────────────────────────────────────────
+ * One doc per user (id = uid) holding their all-time best arcade score.
+ * Best-effort and best-of: only writes when it beats their current record,
+ * and never throws into the game's end screen. */
+export async function submitHighScore(args: {
+  uid: string;
+  userName: string;
+  score: number;
+  test: KnowledgeTest;
+}): Promise<void> {
+  if (!(args.score > 0)) return;
+  try {
+    const ref = doc(db, LEADERBOARD, args.uid);
+    const snap = await getDoc(ref);
+    const row = {
+      uid: args.uid,
+      userName: args.userName,
+      score: args.score,
+      testId: args.test.id,
+      testName: args.test.name,
+      updatedAt: serverTimestamp(),
+    };
+    if (!snap.exists()) await setDoc(ref, row);
+    else if (args.score > (snap.data().score ?? 0)) await updateDoc(ref, row);
+  } catch {
+    /* leaderboard is a nice-to-have — swallow failures */
+  }
+}
+
+/* Top arcade scores across everyone (world-readable), highest first. */
+export async function listLeaderboard(max = 25): Promise<KnowledgeLeaderboardEntry[]> {
+  const snap = await getDocs(
+    query(collection(db, LEADERBOARD), orderBy("score", "desc"), limit(max)),
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<KnowledgeLeaderboardEntry, "id">) }));
 }
 
 /* ── Admin operations ────────────────────────────────────────────── */

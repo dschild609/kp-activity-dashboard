@@ -1,13 +1,50 @@
 import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgeLeaderboardEntry } from "../types/knowledge";
 import { listLeaderboard } from "../lib/knowledge";
 import { NoticeBox, Th } from "../components/ui";
+import { StoreSection } from "./StoreSection";
 
 const RANK_BADGE = ["🥇", "🥈", "🥉"];
 
+type Tab = "board" | "store";
+
 export function LeaderboardPage() {
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get("tab") === "store" ? "store" : "board";
+
+  return (
+    <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+      <h1 className="text-[24px] sm:text-[30px] font-extrabold tracking-[-0.025em] text-kp-navy mb-4">
+        🏆 Arcade
+      </h1>
+      <div className="flex gap-2 mb-6">
+        {([
+          { key: "board", label: "🏆 Leaderboard" },
+          { key: "store", label: "🛒 Store" },
+        ] as const).map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setParams(t.key === "board" ? {} : { tab: "store" }, { replace: true })}
+            className={`rounded-lg border px-3.5 py-2 text-[13.5px] font-semibold transition-colors ${
+              tab === t.key
+                ? "bg-kp-navy text-white border-kp-navy"
+                : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "store" ? <StoreSection /> : <BoardSection />}
+    </main>
+  );
+}
+
+function BoardSection() {
   const { user } = useOutletContext<AuthState>();
   const [rows, setRows] = useState<KnowledgeLeaderboardEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,10 +56,7 @@ export function LeaderboardPage() {
   }, []);
 
   return (
-    <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-      <h1 className="text-[24px] sm:text-[30px] font-extrabold tracking-[-0.025em] text-kp-navy mb-1">
-        🏆 Asteroids Leaderboard
-      </h1>
+    <>
       <p className="text-[13px] text-kp-text-muted mb-6">
         Top arcade scores from across the team — play a test as Asteroids, clear the questions, and
         rack up bonus points to climb the ranks.
@@ -91,6 +125,6 @@ export function LeaderboardPage() {
           </table>
         </div>
       )}
-    </main>
+    </>
   );
 }

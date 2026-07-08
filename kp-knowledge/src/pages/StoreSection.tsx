@@ -40,7 +40,7 @@ function ShipPreview({ ship }: { ship: Ship }) {
   );
 }
 
-export function StorePage() {
+export function StoreSection() {
   const { user } = useOutletContext<AuthState>();
   const [points, setPoints] = useState<KnowledgePoints | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,21 +96,18 @@ export function StorePage() {
   }
 
   return (
-    <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-      <div className="flex flex-wrap items-center gap-3 mb-1">
-        <h1 className="text-[24px] sm:text-[30px] font-extrabold tracking-[-0.025em] text-kp-navy">
-          🛒 Store
-        </h1>
-        <span className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-kp-navy text-white text-[14px] font-bold tabular-nums">
+    <div>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <p className="text-[13px] text-kp-text-muted flex-1 min-w-[240px]">
+          Spend the points you earn on tests and Asteroids on a new starship — what you buy
+          is what you fly.
+        </p>
+        <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-kp-navy text-white text-[14px] font-bold tabular-nums">
           <span className="text-amber-300">★</span>
           {balance.toLocaleString()}
           <span className="font-medium text-white/60">pts</span>
         </span>
       </div>
-      <p className="text-[13px] text-kp-text-muted mb-6">
-        Earn points by acing tests and racking up Asteroids scores, then spend them on a
-        new starship. What you buy is what you fly.
-      </p>
 
       {error && <NoticeBox tone="bad" className="mb-4">{error}</NoticeBox>}
       {message && <NoticeBox tone="good" className="mb-4">{message}</NoticeBox>}
@@ -187,6 +184,6 @@ export function StorePage() {
           })}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

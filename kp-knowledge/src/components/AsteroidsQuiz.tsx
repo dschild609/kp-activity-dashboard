@@ -193,7 +193,8 @@ export function AsteroidsQuiz({
     g.keys.fire = false;
     const q = questions[i];
     const chars = q.text.length + optionKeys(q).reduce((s, k) => s + optionText(q, k).length, 0);
-    g.readingTotal = Math.min(9000, Math.max(3500, 2200 + chars * 22));
+    // Length-scaled base read time + a flat 15s so there's plenty of time.
+    g.readingTotal = 15000 + Math.min(9000, Math.max(3500, 2200 + chars * 22));
     g.readingUntil = g.now + g.readingTotal;
     setQIndex(i);
     setPhaseBoth("reading");

@@ -203,6 +203,9 @@ export function AsteroidsQuiz({
     const g = worldRef.current;
     const q = questions[g.qIndex];
     const keys = optionKeys(q);
+    // 4s of invulnerability on unfreeze so a rock that drifted onto the ship
+    // while it was frozen for reading can't instantly kill you.
+    g.ship.invuln = Math.max(g.ship.invuln, 4);
     // one labeled asteroid per option, spread around the perimeter
     g.rocks = g.rocks.filter((r) => !r.answerKey);
     keys.forEach((key, idx) => {
@@ -587,8 +590,14 @@ export function AsteroidsQuiz({
       else if (k === "arrowright" || k === "d") g.keys.right = down;
       else if (k === "arrowup" || k === "w") g.keys.thrust = down;
       else if (k === " " || k === "spacebar") {
-        g.keys.fire = down;
         e.preventDefault();
+        if (down && g.phase === "reading") {
+          g.readingUntil = g.now; // skip the read timer
+          g.keys.fire = false;
+          g.fireCooldown = 400; // brief lockout so a held Space doesn't insta-shoot an answer
+          return;
+        }
+        g.keys.fire = down;
       } else return;
     };
     const kd = (e: KeyboardEvent) => setKey(e, true);
@@ -678,7 +687,20 @@ export function AsteroidsQuiz({
               <div className="h-1.5 bg-kp-surface-alt rounded-full overflow-hidden">
                 <div className="h-full bg-kp-crimson transition-[width] duration-75" style={{ width: `${readingLeft * 100}%` }} />
               </div>
-              <div className="text-[11.5px] text-kp-text-faint mt-2 text-center">Get ready — shoot the correct asteroid…</div>
+              <div className="mt-3 flex flex-col items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    const g = worldRef.current;
+                    g.readingUntil = g.now; // skip the read timer
+                    g.keys.fire = false;
+                    g.fireCooldown = 400; // brief lockout so the tap/Space doesn't insta-shoot
+                  }}
+                  className="text-[12.5px] font-semibold text-kp-text bg-kp-surface-alt hover:bg-kp-border border border-kp-border rounded-lg px-3.5 py-1.5 transition-colors"
+                >
+                  Press <span className="font-mono font-bold">Space</span> to continue →
+                </button>
+                <div className="text-[11px] text-kp-text-faint">Then shoot the asteroid with the correct answer</div>
+              </div>
             </div>
           </Overlay>
         )}

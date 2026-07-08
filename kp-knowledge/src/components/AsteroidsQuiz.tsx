@@ -81,6 +81,9 @@ interface World {
 
 const W = 900;
 const H = 560;
+// All game math runs in W×H logical space; the canvas buffer is rendered at
+// RENDER_SCALE× so it stays crisp when the (responsive) canvas fills a wide screen.
+const RENDER_SCALE = 2;
 const COLORS = { fg: "#e9f2ff", ship: "#eaf2ff", accent: "#ff3b5c", good: "#3ddc84", warn: "#ffcf5c", dim: "#5b6b7f" };
 
 const optionKeys = (q: KnowledgeQuestion): AnswerKey[] => {
@@ -470,6 +473,8 @@ export function AsteroidsQuiz({
 
   // ── render ───────────────────────────────────────────────────────
   function render(ctx: CanvasRenderingContext2D, g: World, t: number) {
+    // Map the W×H logical space onto the supersampled buffer (idempotent each frame).
+    ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
     ctx.fillStyle = "#070c14";
     ctx.fillRect(0, 0, W, H);
 
@@ -625,7 +630,7 @@ export function AsteroidsQuiz({
   });
 
   return (
-    <div className="max-w-4xl mx-auto px-3 sm:px-6 py-6">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6">
       <div className="flex items-center justify-between mb-3">
         <h1 className="text-[18px] sm:text-[22px] font-extrabold tracking-[-0.02em] text-kp-navy">
           {test.name} <span className="text-kp-crimson">· Asteroids</span>
@@ -639,8 +644,11 @@ export function AsteroidsQuiz({
         </button>
       </div>
 
-      <div className="relative w-full rounded-xl overflow-hidden border border-kp-border shadow-2xs bg-black" style={{ aspectRatio: `${W} / ${H}` }}>
-        <canvas ref={canvasRef} width={W} height={H} className="absolute inset-0 w-full h-full" />
+      <div
+        className="relative mx-auto rounded-xl overflow-hidden border border-kp-border shadow-2xs bg-black"
+        style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc((100dvh - 16.5rem) * ${W} / ${H}))` }}
+      >
+        <canvas ref={canvasRef} width={W * RENDER_SCALE} height={H * RENDER_SCALE} className="absolute inset-0 w-full h-full" />
 
         {/* HUD mirror (score/lives are drawn on canvas; this is a11y text) */}
         <span className="sr-only">Score {hud.score}, {hud.lives} lives</span>

@@ -4,6 +4,7 @@ import { AuthedLayout } from "./components/AuthedLayout";
 import { TestsPage } from "./pages/TestsPage";
 import { TakeTestPage } from "./pages/TakeTestPage";
 import { MyResultsPage } from "./pages/MyResultsPage";
+import { AsteroidsDemo } from "./components/AsteroidsDemo";
 
 /* Admin pages pull in heavyweight admin-only libs (pdf.js, SheetJS) —
  * lazy-loading keeps them out of the bundle employees download. */
@@ -29,6 +30,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {import.meta.env.DEV && <Route path="/play-demo" element={<AsteroidsDemo />} />}
         <Route path="/" element={<AuthedLayout />}>
           <Route index element={<TestsPage />} />
           <Route path="tests/:testId" element={<TakeTestPage />} />

@@ -14,6 +14,7 @@ import {
 } from "../lib/knowledge";
 import { SlideView, sectionNumberAt } from "../components/SlideView";
 import { VideoPlayer } from "../components/VideoPlayer";
+import { AsteroidsQuiz } from "../components/AsteroidsQuiz";
 import { parseVideoUrl } from "../lib/video";
 
 /* Per-attempt shuffle: question order is randomized, and MC options are
@@ -54,6 +55,7 @@ type PageState =
   | { phase: "error"; message: string }
   | { phase: "slides"; test: KnowledgeTest; quiz: QuizOrder; attemptNumber: number }
   | { phase: "taking"; test: KnowledgeTest; quiz: QuizOrder; attemptNumber: number }
+  | { phase: "game"; test: KnowledgeTest; quiz: QuizOrder; attemptNumber: number }
   | { phase: "done"; test: KnowledgeTest; quiz: QuizOrder; result: GradeResult };
 
 function slideProgressKey(uid: string, testId: string): string {
@@ -124,11 +126,11 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
     return state.quiz.questions.filter((q) => !answers[q.id]).length;
   }, [state, answers]);
 
-  async function handleSubmit() {
-    if (state.phase !== "taking" || !user || submitting) return;
+  async function submitAnswers(finalAnswers: Record<string, AnswerKey | null>) {
+    if ((state.phase !== "taking" && state.phase !== "game") || !user || submitting) return;
     setSubmitting(true);
     try {
-      const result = gradeAnswers(state.quiz.questions, answers, state.test.maxWrongToPass);
+      const result = gradeAnswers(state.quiz.questions, finalAnswers, state.test.maxWrongToPass);
       if (!preview) {
         await submitAttempt({
           uid: user.uid,
@@ -147,6 +149,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
       setSubmitting(false);
     }
   }
+  const handleSubmit = () => submitAnswers(answers);
 
   if (state.phase === "loading") {
     return <Centered>Loading test…</Centered>;
@@ -185,16 +188,38 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
   }
 
   if (state.phase === "slides") {
+    const gstate = state;
     return (
       <SlideDeck
         test={state.test}
         preview={preview}
         progressKey={!preview && user ? slideProgressKey(user.uid, state.test.id) : null}
         onStartQuiz={() => {
-          setState({ ...state, phase: "taking" });
+          setState({ ...gstate, phase: "taking" });
+          window.scrollTo({ top: 0 });
+        }}
+        onStartGame={() => {
+          setState({ ...gstate, phase: "game" });
           window.scrollTo({ top: 0 });
         }}
         onCancel={() => navigate(preview ? `/admin/tests/${testId}` : "/")}
+      />
+    );
+  }
+
+  if (state.phase === "game") {
+    const gstate = state;
+    return (
+      <AsteroidsQuiz
+        test={state.test}
+        quiz={state.quiz}
+        onComplete={(a) => submitAnswers(a)}
+        onFallback={(a) => {
+          setAnswers(a);
+          setState({ ...gstate, phase: "taking" });
+          window.scrollTo({ top: 0 });
+        }}
+        onExit={() => navigate(preview ? `/admin/tests/${testId}` : "/")}
       />
     );
   }
@@ -221,6 +246,15 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
             </>
           )}
         </div>
+        {state.phase === "taking" && (
+          <button
+            type="button"
+            onClick={() => setState({ ...state, phase: "game" })}
+            className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-kp-crimson hover:underline"
+          >
+            🎮 Play as Asteroids instead
+          </button>
+        )}
       </div>
 
       {result && (
@@ -483,12 +517,14 @@ function SlideDeck({
   preview,
   progressKey,
   onStartQuiz,
+  onStartGame,
   onCancel,
 }: {
   test: KnowledgeTest;
   preview: boolean;
   progressKey: string | null;
   onStartQuiz: () => void;
+  onStartGame: () => void;
   onCancel: () => void;
 }) {
   const slides = test.slides;
@@ -629,6 +665,7 @@ function SlideDeck({
           ← Back
         </button>
         {last ? (
+          <>
           <button
             type="button"
             onClick={onStartQuiz}
@@ -637,6 +674,16 @@ function SlideDeck({
           >
             Start Quiz ({test.questionCount} questions)
           </button>
+          <button
+            type="button"
+            onClick={onStartGame}
+            disabled={videoNeedsWatch}
+            title="Answer by playing Asteroids"
+            className="px-4 py-2.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[14px] font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            🎮 Asteroids Quiz
+          </button>
+          </>
         ) : (
           <button
             type="button"

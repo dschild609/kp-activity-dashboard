@@ -142,7 +142,10 @@ export function StoreSection() {
                       </span>
                     )}
                   </div>
-                  <p className="text-[12.5px] text-kp-text-muted mt-1 flex-1">{ship.blurb}</p>
+                  <div className="mt-0.5 mb-1 font-mono text-[10px] uppercase tracking-[0.06em] text-kp-text-faint">
+                    {ship.faction} · {ship.weapon}
+                  </div>
+                  <p className="text-[12.5px] text-kp-text-muted flex-1">{ship.blurb}</p>
                   <div className="mt-3 flex items-center justify-between gap-2">
                     <span className="text-[13px] font-bold tabular-nums text-kp-text">
                       {ship.cost === 0 ? "Free" : (

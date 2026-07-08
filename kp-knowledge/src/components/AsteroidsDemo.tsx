@@ -19,9 +19,32 @@ const Q: KnowledgeQuestion[] = [
     optionA: "Guess the numbers", optionB: "Pull the latest hours + fill data", optionC: "Skip it", optionD: "Ask a competitor",
     correctAnswer: "B",
   },
+  {
+    id: "q4", orderNum: 4, type: "MC", text: "Who fills out and signs the W-4?",
+    optionA: "The recruiter", optionB: "Payroll", optionC: "The employee", optionD: "The client",
+    correctAnswer: "C",
+  },
+  {
+    id: "q5", orderNum: 5, type: "TF", text: "You should confirm a candidate's start date with the client before onboarding.",
+    optionA: "True", optionB: "False", optionC: null, optionD: null, correctAnswer: "A",
+  },
+  {
+    id: "q6", orderNum: 6, type: "MC", text: "Where do you log a new order from a client?",
+    optionA: "A sticky note", optionB: "The ATS / order board", optionC: "Your memory", optionD: "A text message",
+    correctAnswer: "B",
+  },
+  {
+    id: "q7", orderNum: 7, type: "MC", text: "What's the priority when a client reports a no-show?",
+    optionA: "Ignore it", optionB: "Blame the client", optionC: "Source a replacement fast", optionD: "Wait a week",
+    correctAnswer: "C",
+  },
+  {
+    id: "q8", orderNum: 8, type: "TF", text: "Every timecard should be reviewed before it is submitted to payroll.",
+    optionA: "True", optionB: "False", optionC: null, optionD: null, correctAnswer: "A",
+  },
 ] as unknown as KnowledgeQuestion[];
 
-const TEST = { id: "demo", name: "Demo Training", maxWrongToPass: 3 } as unknown as KnowledgeTest;
+const TEST = { id: "demo", name: "Demo Training", maxWrongToPass: 6 } as unknown as KnowledgeTest;
 
 export function AsteroidsDemo() {
   return (

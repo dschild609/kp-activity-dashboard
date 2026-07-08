@@ -56,6 +56,20 @@ interface Particle {
   max: number;
   color: string;
 }
+// Hostile "Core Personnel" starship that jumps into free-play at high levels.
+interface Enemy {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  r: number; // collision radius (doubles as the draw scale)
+  hp: number;
+  maxHp: number;
+  fireCooldown: number; // ms until the next shot
+  boss: boolean; // the apex flagship (bigger, tougher, spread fire)
+  sway: number; // phase offset for the menacing sway
+  drift: number; // slowly-wandering heading
+}
 
 interface World {
   phase: Phase;
@@ -76,6 +90,9 @@ interface World {
   flash: { color: string; until: number } | null;
   power: { rapidUntil: number; spreadUntil: number };
   answers: Record<string, AnswerKey | null>;
+  enemies: Enemy[];
+  enemyBullets: Bullet[];
+  alert: { text: string; until: number } | null; // transient on-canvas banner
   now: number;
 }
 
@@ -85,6 +102,52 @@ const H = 560;
 // RENDER_SCALE× so it stays crisp when the (responsive) canvas fills a wide screen.
 const RENDER_SCALE = 2;
 const COLORS = { fg: "#e9f2ff", ship: "#eaf2ff", accent: "#ff3b5c", good: "#3ddc84", warn: "#ffcf5c", dim: "#5b6b7f" };
+
+// "Core Personnel" hostile flagship — carrier-class silhouette (normalized, nose
+// points up / -y), rendered as a neon double-stroke. Lifted from the boss spec.
+const ENEMY_COLOR = "#ff8a1e";
+const ENEMY_PATHS: number[][][] = [
+  // central deck (wide octagon)
+  [[-0.5, -0.55], [0.5, -0.55], [0.98, -0.12], [0.98, 0.38], [0.5, 0.72], [-0.5, 0.72], [-0.98, 0.38], [-0.98, -0.12]],
+  // forward crown spikes (up)
+  [[-0.5, -0.55], [-0.62, -1.28], [-0.28, -0.55]],
+  [[0.5, -0.55], [0.62, -1.28], [0.28, -0.55]],
+  [[-0.15, -0.55], [0, -1.42], [0.15, -0.55]],
+  // swept side wings (out)
+  [[-0.98, -0.02], [-1.55, 0.22], [-1.32, 0.6], [-0.98, 0.34]],
+  [[0.98, -0.02], [1.55, 0.22], [1.32, 0.6], [0.98, 0.34]],
+  // lower engine prongs (down)
+  [[-0.34, 0.72], [-0.44, 1.2], [-0.16, 0.72]],
+  [[0.34, 0.72], [0.44, 1.2], [0.16, 0.72]],
+];
+const ENEMY_FLAME_Y = 0.72;
+
+function hexA(hex: string, a: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+function spawnEnemy(boss: boolean): Enemy {
+  const edge = Math.floor(Math.random() * 4);
+  const x = edge === 1 ? W : edge === 3 ? 0 : Math.random() * W;
+  const y = edge === 0 ? 0 : edge === 2 ? H : Math.random() * H;
+  const r = boss ? 52 : 22;
+  const spd = boss ? 24 : 46 + Math.random() * 26;
+  const dir = Math.atan2(H / 2 - y, W / 2 - x) + (Math.random() - 0.5) * 0.7;
+  return {
+    x,
+    y,
+    vx: Math.cos(dir) * spd,
+    vy: Math.sin(dir) * spd,
+    r,
+    hp: boss ? 6 : 1,
+    maxHp: boss ? 6 : 1,
+    fireCooldown: 800 + Math.random() * 900,
+    boss,
+    sway: Math.random() * Math.PI * 2,
+    drift: dir,
+  };
+}
 
 const optionKeys = (q: KnowledgeQuestion): AnswerKey[] => {
   const k: AnswerKey[] = ["A", "B"];
@@ -118,6 +181,10 @@ export function AsteroidsQuiz({
   // Lives = the test's wrong-answer budget: if they can miss N and still
   // pass, they get N lives. Each wrong shot / crash spends one.
   const livesBudget = Math.max(1, test.maxWrongToPass || 1);
+  // Enemy starships show up at "high levels" — the back half of the test. The
+  // apex flagship boss arrives in the final free-play (needs a longer test).
+  const ENEMY_START = Math.max(2, Math.ceil(questions.length * 0.5));
+  const BOSS_LEVEL = questions.length >= 4 ? questions.length - 2 : -1;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<World>(newWorld());
   // Mirror of the bits the HTML overlays need — updated only on change.
@@ -146,6 +213,9 @@ export function AsteroidsQuiz({
       flash: null,
       power: { rapidUntil: 0, spreadUntil: 0 },
       answers: {},
+      enemies: [],
+      enemyBullets: [],
+      alert: null,
       now: 0,
     };
   }
@@ -193,6 +263,9 @@ export function AsteroidsQuiz({
     g.wrongThisQ = false;
     g.rocks = g.rocks.filter((r) => !r.answerKey); // clear any labeled rocks
     g.bullets = []; // drop in-flight shots so none stray into an answer rock
+    g.enemies = []; // hostiles retreat while a question is on screen
+    g.enemyBullets = [];
+    g.alert = null;
     g.keys.fire = false;
     const q = questions[i];
     const chars = q.text.length + optionKeys(q).reduce((s, k) => s + optionText(q, k).length, 0);
@@ -209,6 +282,8 @@ export function AsteroidsQuiz({
     // 4s of invulnerability on unfreeze so a rock that drifted onto the ship
     // while it was frozen for reading can't instantly kill you.
     g.ship.invuln = Math.max(g.ship.invuln, 4);
+    g.enemies = [];
+    g.enemyBullets = [];
     // one labeled asteroid per option, spread around the perimeter
     g.rocks = g.rocks.filter((r) => !r.answerKey);
     keys.forEach((key, idx) => {
@@ -270,9 +345,37 @@ export function AsteroidsQuiz({
     setHud({ score: g.score, lives: g.lives });
     const last = g.qIndex >= questions.length - 1;
     if (last) window.setTimeout(() => setPhaseBoth("complete"), 700);
-    else {
-      g.freeplayUntil = g.now + 8500;
-      setPhaseBoth("freeplay");
+    else enterFreeplay();
+  }
+  // Between-questions arcade break. At high levels this is where hostile
+  // starships jump in; the final free-play summons the Core Personnel flagship.
+  function enterFreeplay() {
+    const g = worldRef.current;
+    const boss = g.qIndex === BOSS_LEVEL;
+    g.freeplayUntil = g.now + (boss ? 15000 : 8500);
+    if (boss) {
+      g.enemies.push(spawnEnemy(true));
+      g.alert = { text: "⚠ FLAGSHIP INBOUND — CORE PERSONNEL", until: g.now + 2800 };
+    } else if (g.qIndex >= ENEMY_START) {
+      g.alert = { text: "⚠ HOSTILE STARSHIPS INBOUND", until: g.now + 2200 };
+    }
+    setPhaseBoth("freeplay");
+  }
+  function enemyFire(e: Enemy) {
+    const g = worldRef.current;
+    const s = g.ship;
+    const base = Math.atan2(s.y - e.y, s.x - e.x);
+    const angs = e.boss ? [-0.28, 0, 0.28] : [(Math.random() - 0.5) * 0.14];
+    const spd = e.boss ? 230 : 260;
+    for (const da of angs) {
+      const a = base + da;
+      g.enemyBullets.push({
+        x: e.x + Math.cos(a) * (e.r + 4),
+        y: e.y + Math.sin(a) * (e.r + 4),
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd,
+        life: 2.6,
+      });
     }
   }
   function grantPower() {
@@ -409,11 +512,41 @@ export function AsteroidsQuiz({
       r.angle += r.spin * dt;
     }
 
-    // spawn generic rocks during freeplay
+    // spawn generic rocks + hostile fighters during freeplay
     if (g.phase === "freeplay") {
       const generic = g.rocks.filter((r) => !r.answerKey).length;
       if (generic < 4 && Math.random() < 0.03) g.rocks.push(spawnRock(3));
+      if (g.qIndex >= ENEMY_START) {
+        const hasBoss = g.enemies.some((e) => e.boss);
+        const fighters = g.enemies.filter((e) => !e.boss).length;
+        const cap = hasBoss ? 2 : Math.min(3, 1 + (g.qIndex - ENEMY_START));
+        if (fighters < cap && Math.random() < 0.02) g.enemies.push(spawnEnemy(false));
+      }
     }
+
+    // hostile starships: wander, sway, and open fire on the player
+    for (const e of g.enemies) {
+      e.drift += (Math.random() - 0.5) * 0.9 * dt;
+      const spd = e.boss ? 24 : 55;
+      e.vx += (Math.cos(e.drift) * spd - e.vx) * Math.min(1, dt * 0.7);
+      e.vy += (Math.sin(e.drift) * spd - e.vy) * Math.min(1, dt * 0.7);
+      e.x = wrap(e.x + e.vx * dt, W);
+      e.y = wrap(e.y + e.vy * dt, H);
+      e.fireCooldown -= dt * 1000;
+      if (g.phase === "freeplay" && e.fireCooldown <= 0) {
+        enemyFire(e);
+        e.fireCooldown = e.boss ? 1700 : 2000 + Math.random() * 900;
+      }
+    }
+    // enemy bullets fly straight and expire (no wrap — easier to read & dodge)
+    for (const b of g.enemyBullets) {
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.life -= dt;
+    }
+    g.enemyBullets = g.enemyBullets.filter(
+      (b) => b.life > 0 && b.x > -12 && b.x < W + 12 && b.y > -12 && b.y < H + 12
+    );
 
     // bullet × rock
     for (const b of g.bullets) {
@@ -452,6 +585,48 @@ export function AsteroidsQuiz({
         }
       }
     }
+
+    // player bullet × enemy
+    for (const b of g.bullets) {
+      if (b.life <= 0) continue;
+      for (const e of g.enemies) {
+        if (e.hp > 0 && dist(b, e) < e.r) {
+          b.life = 0;
+          e.hp -= 1;
+          burst(b.x, b.y, ENEMY_COLOR, 6);
+          if (e.hp <= 0) {
+            burst(e.x, e.y, ENEMY_COLOR, e.boss ? 40 : 16);
+            g.score += e.boss ? 1500 : 150;
+            setHudThrottled(g);
+            if (e.boss) g.alert = { text: "FLAGSHIP DESTROYED  +1500", until: g.now + 2600 };
+          }
+          break;
+        }
+      }
+    }
+
+    // enemy fire / ramming × ship (guarded by invuln so crash() can't double-hit)
+    if (s.invuln <= 0) {
+      let hit = false;
+      for (const b of g.enemyBullets) {
+        if (dist(s, b) < 12) {
+          b.life = 0;
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) {
+        for (const e of g.enemies) {
+          if (dist(s, e) < e.r + 10) {
+            if (!e.boss) e.hp = 0; // ramming a fighter destroys it
+            hit = true;
+            break;
+          }
+        }
+      }
+      if (hit) crash();
+    }
+    g.enemies = g.enemies.filter((e) => e.hp > 0);
 
     // particles
     for (const p of g.particles) {
@@ -514,6 +689,11 @@ export function AsteroidsQuiz({
       }
     }
 
+    // hostile starships + their fire
+    for (const e of g.enemies) drawEnemy(ctx, e, t);
+    ctx.fillStyle = ENEMY_COLOR;
+    for (const b of g.enemyBullets) ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+
     // bullets
     ctx.fillStyle = COLORS.fg;
     for (const b of g.bullets) ctx.fillRect(b.x - 1.5, b.y - 1.5, 3, 3);
@@ -533,6 +713,20 @@ export function AsteroidsQuiz({
       ctx.fillStyle = g.flash.color;
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
+    }
+
+    // hostile-inbound / boss-down banner
+    if (g.alert && t < g.alert.until) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, (g.alert.until - t) / 500);
+      ctx.fillStyle = ENEMY_COLOR;
+      ctx.font = "bold 15px 'Geist Mono', ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = ENEMY_COLOR;
+      ctx.shadowBlur = 12;
+      ctx.fillText(g.alert.text, W / 2, 46);
+      ctx.restore();
     }
 
     // HUD
@@ -584,6 +778,72 @@ export function AsteroidsQuiz({
       ctx.globalAlpha = 1;
     }
     ctx.restore();
+  }
+
+  // Core Personnel flagship silhouette — neon double-stroke, twin flames, sway.
+  function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, t: number) {
+    const color = ENEMY_COLOR;
+    const s = e.r;
+    const ang = Math.sin(t * 0.0016 + e.sway) * 0.12; // slow menace sway
+    const cos = Math.cos(ang);
+    const sin = Math.sin(ang);
+    const tp = (x: number, y: number): [number, number] => [
+      e.x + (x * cos - y * sin) * s,
+      e.y + (x * sin + y * cos) * s,
+    ];
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    const flick = 0.55 + 0.45 * Math.abs(Math.sin(t * 0.016 + e.sway));
+
+    // twin thruster flames
+    for (const dx of [-0.25, 0.25]) {
+      const bl = tp(dx - 0.09, ENEMY_FLAME_Y);
+      const tip = tp(dx, ENEMY_FLAME_Y + 0.34 * flick);
+      const br = tp(dx + 0.09, ENEMY_FLAME_Y);
+      ctx.beginPath();
+      ctx.moveTo(bl[0], bl[1]);
+      ctx.lineTo(tip[0], tip[1]);
+      ctx.lineTo(br[0], br[1]);
+      ctx.closePath();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = hexA(color, 0.28 + 0.35 * flick);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // hull — neon double-stroke (color glow + thin white inner line)
+    for (const p of ENEMY_PATHS) {
+      ctx.beginPath();
+      for (let i = 0; i < p.length; i++) {
+        const q = tp(p[i][0], p[i][1]);
+        if (i === 0) ctx.moveTo(q[0], q[1]);
+        else ctx.lineTo(q[0], q[1]);
+      }
+      ctx.closePath();
+      ctx.fillStyle = hexA(color, 0.06);
+      ctx.fill();
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 12;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+    }
+
+    // boss health bar
+    if (e.boss) {
+      const bw = e.r * 2.2;
+      const bx = e.x - bw / 2;
+      const by = e.y - e.r * 1.75;
+      ctx.fillStyle = "rgba(255,255,255,0.16)";
+      ctx.fillRect(bx, by, bw, 5);
+      ctx.fillStyle = color;
+      ctx.fillRect(bx, by, bw * Math.max(0, e.hp / e.maxHp), 5);
+    }
   }
 
   // ── input ────────────────────────────────────────────────────────
@@ -663,7 +923,8 @@ export function AsteroidsQuiz({
                 A question freezes the game; read it, then shoot the asteroid with the <b>correct</b>{" "}
                 answer — the rest blow up for bonus points. A wrong shot (or a crash) costs a life, and you
                 get <b>{livesBudget}</b> {livesBudget === 1 ? "life" : "lives"} — your wrong-answer budget.
-                Clear all {questions.length} to finish.
+                At <b className="text-[#ff8a1e]">high levels</b>, hostile Core Personnel starships jump in — blast them
+                for big points, but don't get hit. Clear all {questions.length} to finish.
               </p>
               <button
                 type="button"
@@ -734,6 +995,9 @@ export function AsteroidsQuiz({
                     g.answers = {};
                     g.rocks = [];
                     g.particles = [];
+                    g.enemies = [];
+                    g.enemyBullets = [];
+                    g.alert = null;
                     g.power = { rapidUntil: 0, spreadUntil: 0 };
                     g.ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, angle: -Math.PI / 2, invuln: 2, shield: false };
                     setHud({ score: 0, lives: livesBudget });

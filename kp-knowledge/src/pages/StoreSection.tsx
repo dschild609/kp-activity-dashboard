@@ -2,43 +2,14 @@
 // starships. Buying deducts points and auto-equips the ship; you can re-equip any
 // ship you own. What you see previewed is exactly what you fly in the game.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgePoints } from "../types/knowledge";
 import { getPoints, purchaseShip, equipShip } from "../lib/knowledge";
-import { SHIPS, DEFAULT_SHIP_ID, drawShipHull, type Ship } from "../lib/ships";
+import { SHIPS, DEFAULT_SHIP_ID, type Ship } from "../lib/ships";
+import { ShipPreview } from "../components/ShipPreview";
 import { NoticeBox } from "../components/ui";
-
-function ShipPreview({ ship }: { ship: Ship }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const dpr = window.devicePixelRatio || 1;
-    const w = 132;
-    const h = 96;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, w, h);
-    ctx.save();
-    ctx.translate(w / 2, h / 2);
-    ctx.rotate(-Math.PI / 2); // nose up
-    ctx.scale(1.7, 1.7);
-    drawShipHull(ctx, ship.id);
-    ctx.restore();
-  }, [ship.id]);
-  return (
-    <canvas
-      ref={ref}
-      style={{ width: 132, height: 96 }}
-      className="rounded-lg bg-[#0b1220] w-full"
-    />
-  );
-}
 
 export function StoreSection() {
   const { user } = useOutletContext<AuthState>();
@@ -131,7 +102,7 @@ export function StoreSection() {
                 }`}
               >
                 <div className="p-3 bg-[#0b1220] grid place-items-center">
-                  <ShipPreview ship={ship} />
+                  <ShipPreview shipId={ship.id} />
                 </div>
                 <div className="p-4 flex-1 flex flex-col">
                   <div className="flex items-center gap-2">

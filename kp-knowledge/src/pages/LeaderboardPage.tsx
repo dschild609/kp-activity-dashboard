@@ -5,14 +5,16 @@ import type { KnowledgeLeaderboardEntry } from "../types/knowledge";
 import { listLeaderboard } from "../lib/knowledge";
 import { NoticeBox, Th } from "../components/ui";
 import { StoreSection } from "./StoreSection";
+import { HangarSection } from "./HangarSection";
 
 const RANK_BADGE = ["🥇", "🥈", "🥉"];
 
-type Tab = "board" | "store";
+type Tab = "board" | "store" | "hangar";
 
 export function LeaderboardPage() {
   const [params, setParams] = useSearchParams();
-  const tab: Tab = params.get("tab") === "store" ? "store" : "board";
+  const raw = params.get("tab");
+  const tab: Tab = raw === "store" ? "store" : raw === "hangar" ? "hangar" : "board";
 
   return (
     <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
@@ -23,11 +25,12 @@ export function LeaderboardPage() {
         {([
           { key: "board", label: "🏆 Leaderboard" },
           { key: "store", label: "🛒 Store" },
+          { key: "hangar", label: "🚀 The Hangar" },
         ] as const).map((t) => (
           <button
             key={t.key}
             type="button"
-            onClick={() => setParams(t.key === "board" ? {} : { tab: "store" }, { replace: true })}
+            onClick={() => setParams(t.key === "board" ? {} : { tab: t.key }, { replace: true })}
             className={`rounded-lg border px-3.5 py-2 text-[13.5px] font-semibold transition-colors ${
               tab === t.key
                 ? "bg-kp-navy text-white border-kp-navy"
@@ -39,7 +42,7 @@ export function LeaderboardPage() {
         ))}
       </div>
 
-      {tab === "store" ? <StoreSection /> : <BoardSection />}
+      {tab === "store" ? <StoreSection /> : tab === "hangar" ? <HangarSection /> : <BoardSection />}
     </main>
   );
 }

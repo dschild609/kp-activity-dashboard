@@ -681,19 +681,6 @@ export function AsteroidsQuiz({
         )}
 
         {/* Answering: docked question */}
-        {phase === "answering" && q && (
-          <div className="absolute top-2 left-2 right-2 sm:right-auto sm:max-w-xs bg-black/70 rounded-lg border border-white/15 p-2.5 backdrop-blur-sm pointer-events-none">
-            <div className="text-[13px] font-bold text-white mb-1.5 leading-snug">{q.text}</div>
-            <div className="space-y-0.5">
-              {keys.map((k) => (
-                <div key={k} className="text-[12px] text-white/85">
-                  <span className="font-mono font-bold text-kp-warn">{rockLabel(q, k)}</span> — {optionText(q, k)}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Dead: choice */}
         {phase === "dead" && (
           <Overlay>
@@ -764,6 +751,22 @@ export function AsteroidsQuiz({
           </>
         )}
       </div>
+
+      {/* Question shown BELOW the play field (during answering) so it never
+       * covers the asteroids. */}
+      {phase === "answering" && q && (
+        <div className="mt-3 bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-3.5">
+          <div className="text-[14px] font-bold text-kp-text mb-2 leading-snug">{q.text}</div>
+          <div className="grid sm:grid-cols-2 gap-x-5 gap-y-1">
+            {keys.map((k) => (
+              <div key={k} className="text-[13px] text-kp-text-muted">
+                <span className="font-mono font-bold text-kp-crimson">{rockLabel(q, k)}</span> — {optionText(q, k)}
+              </div>
+            ))}
+          </div>
+          <div className="text-[12px] text-kp-text-faint mt-2">🎯 Shoot the asteroid labeled with the correct answer.</div>
+        </div>
+      )}
 
       <div className="mt-3 text-center text-[12px] text-kp-text-faint">
         ← → rotate · ↑/W thrust · Space shoot &nbsp;·&nbsp; shoot the asteroid with the correct answer

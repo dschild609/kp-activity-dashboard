@@ -21,7 +21,7 @@ const Q: KnowledgeQuestion[] = [
   },
 ] as unknown as KnowledgeQuestion[];
 
-const TEST = { id: "demo", name: "Demo Training", maxWrongToPass: 1 } as unknown as KnowledgeTest;
+const TEST = { id: "demo", name: "Demo Training", maxWrongToPass: 3 } as unknown as KnowledgeTest;
 
 export function AsteroidsDemo() {
   return (

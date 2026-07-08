@@ -1,9 +1,3 @@
-/* This is a requestAnimationFrame canvas game. Its logic runs inside the
- * animation loop (an effect) and mutates a single ref-held "world" by design —
- * not during render. The react-compiler purity/refs rules model component-body
- * functions as render-time work, which doesn't fit an imperative game loop, so
- * they're disabled for this file only. */
-/* eslint-disable react-hooks/purity, react-hooks/refs, react-hooks/immutability */
 import { useEffect, useRef, useState } from "react";
 import type { ComponentProps, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { AnswerKey, KnowledgeQuestion, KnowledgeTest } from "../types/knowledge";
@@ -78,6 +72,7 @@ interface World {
   readingTotal: number;
   freeplayUntil: number;
   answeredThisQ: boolean;
+  wrongThisQ: boolean;
   flash: { color: string; until: number } | null;
   power: { rapidUntil: number; spreadUntil: number };
   answers: Record<string, AnswerKey | null>;
@@ -117,12 +112,15 @@ export function AsteroidsQuiz({
   onExit: () => void;
 }) {
   const questions = quiz.questions;
+  // Lives = the test's wrong-answer budget: if they can miss N and still
+  // pass, they get N lives. Each wrong shot / crash spends one.
+  const livesBudget = Math.max(1, test.maxWrongToPass || 1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const worldRef = useRef<World>(newWorld());
   // Mirror of the bits the HTML overlays need — updated only on change.
   const [phase, setPhase] = useState<Phase>("intro");
   const [qIndex, setQIndex] = useState(0);
-  const [hud, setHud] = useState({ score: 0, lives: 3 });
+  const [hud, setHud] = useState({ score: 0, lives: livesBudget });
   const [readingLeft, setReadingLeft] = useState(1);
 
   function newWorld(): World {
@@ -134,13 +132,14 @@ export function AsteroidsQuiz({
       rocks: [],
       particles: [],
       score: 0,
-      lives: 3,
+      lives: livesBudget,
       keys: { left: false, right: false, thrust: false, fire: false },
       fireCooldown: 0,
       readingUntil: 0,
       readingTotal: 1,
       freeplayUntil: 0,
       answeredThisQ: false,
+      wrongThisQ: false,
       flash: null,
       power: { rapidUntil: 0, spreadUntil: 0 },
       answers: {},
@@ -188,6 +187,7 @@ export function AsteroidsQuiz({
     const g = worldRef.current;
     g.qIndex = i;
     g.answeredThisQ = false;
+    g.wrongThisQ = false;
     g.rocks = g.rocks.filter((r) => !r.answerKey); // clear any labeled rocks
     const q = questions[i];
     const chars = q.text.length + optionKeys(q).reduce((s, k) => s + optionText(q, k).length, 0);
@@ -219,29 +219,49 @@ export function AsteroidsQuiz({
     });
     setPhaseBoth("answering");
   }
-  function answerQuestion(key: AnswerKey) {
+  /* You must shoot the CORRECT answer to advance. Hitting the correct one
+   * auto-detonates the remaining options for bonus points and moves on.
+   * A wrong shot costs a life (once per question) and marks it wrong, but you
+   * still have to find and shoot the correct answer to clear the question. */
+  function shootAnswer(rock: Rock) {
     const g = worldRef.current;
     if (g.answeredThisQ) return;
-    g.answeredThisQ = true;
     const q = questions[g.qIndex];
-    g.answers[q.id] = key;
-    const correct = key === q.correctAnswer;
-    // clear the labeled rocks
-    for (const r of g.rocks) if (r.answerKey) burst(r.x, r.y, correct ? COLORS.good : COLORS.accent, 10);
-    g.rocks = g.rocks.filter((r) => !r.answerKey);
-    if (correct) {
-      g.score += 500;
-      g.flash = { color: COLORS.good, until: g.now + 450 };
-      grantPower();
-    } else {
-      g.flash = { color: COLORS.accent, until: g.now + 450 };
+    const correct = rock.answerKey === q.correctAnswer;
+
+    if (!correct) {
+      burst(rock.x, rock.y, COLORS.accent, 10);
+      rock.r = -1; // remove the wrong asteroid
+      if (!g.wrongThisQ) {
+        g.wrongThisQ = true;
+        g.answers[q.id] = rock.answerKey ?? null; // recorded wrong
+        g.flash = { color: COLORS.accent, until: g.now + 450 };
+        decLife();
+      }
+      return; // no advance — the correct asteroid is still out there
     }
+
+    // correct shot — clears the question
+    g.answeredThisQ = true;
+    const clean = !g.wrongThisQ; // right on the first try
+    if (clean) {
+      g.answers[q.id] = rock.answerKey ?? null;
+      g.score += 500;
+      grantPower();
+    }
+    // auto-detonate every other option asteroid + collect the points
+    for (const rr of g.rocks) {
+      if (rr.answerKey) {
+        burst(rr.x, rr.y, COLORS.good, 10);
+        g.score += 60;
+        rr.r = -1;
+      }
+    }
+    g.flash = { color: clean ? COLORS.good : COLORS.warn, until: g.now + 450 };
     setHud({ score: g.score, lives: g.lives });
-    // brief beat, then next question or complete
     const last = g.qIndex >= questions.length - 1;
-    if (last) {
-      window.setTimeout(() => setPhaseBoth("complete"), 700);
-    } else {
+    if (last) window.setTimeout(() => setPhaseBoth("complete"), 700);
+    else {
       g.freeplayUntil = g.now + 8500;
       setPhaseBoth("freeplay");
     }
@@ -253,7 +273,18 @@ export function AsteroidsQuiz({
     else if (roll === 1) g.power.rapidUntil = g.now + 12000;
     else g.power.spreadUntil = g.now + 12000;
   }
-  function loseLife() {
+  // Spend one life (a wrong answer or a crash). Returns true if it was the last.
+  function decLife(): boolean {
+    const g = worldRef.current;
+    g.lives -= 1;
+    setHud({ score: g.score, lives: g.lives });
+    if (g.lives <= 0) {
+      setPhaseBoth("dead");
+      return true;
+    }
+    return false;
+  }
+  function crash() {
     const g = worldRef.current;
     if (g.ship.shield) {
       g.ship.shield = false;
@@ -261,14 +292,10 @@ export function AsteroidsQuiz({
       burst(g.ship.x, g.ship.y, COLORS.warn, 16);
       return;
     }
-    g.lives -= 1;
     burst(g.ship.x, g.ship.y, COLORS.accent, 24);
-    setHud({ score: g.score, lives: g.lives });
-    if (g.lives <= 0) {
-      setPhaseBoth("dead");
-      return;
+    if (!decLife()) {
+      g.ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, angle: -Math.PI / 2, invuln: 2.2, shield: false };
     }
-    g.ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, angle: -Math.PI / 2, invuln: 2.2, shield: false };
   }
 
   function fire() {
@@ -385,7 +412,7 @@ export function AsteroidsQuiz({
         if (dist(b, r) < r.r) {
           b.life = 0;
           if (r.answerKey) {
-            answerQuestion(r.answerKey);
+            shootAnswer(r);
           } else {
             burst(r.x, r.y, COLORS.fg, 8);
             g.score += r.size === 3 ? 20 : r.size === 2 ? 50 : 100;
@@ -411,7 +438,7 @@ export function AsteroidsQuiz({
     if (s.invuln <= 0) {
       for (const r of g.rocks) {
         if (!r.answerKey && dist(s, r) < r.r + 11) {
-          loseLife();
+          crash();
           break;
         }
       }
@@ -613,8 +640,10 @@ export function AsteroidsQuiz({
               <div className="text-[26px] font-extrabold mb-2">Asteroids Quiz</div>
               <p className="text-[13.5px] text-white/80 mb-4">
                 Fly with <b>← →</b> (rotate) and <b>↑ / W</b> (thrust), <b>Space</b> to shoot — or use the on-screen buttons.
-                A question freezes the game; read it, then shoot the asteroid with the correct answer.
-                Get it right for a power-up. Clear all {questions.length} to finish.
+                A question freezes the game; read it, then shoot the asteroid with the <b>correct</b>{" "}
+                answer — the rest blow up for bonus points. A wrong shot (or a crash) costs a life, and you
+                get <b>{livesBudget}</b> {livesBudget === 1 ? "life" : "lives"} — your wrong-answer budget.
+                Clear all {questions.length} to finish.
               </p>
               <button
                 type="button"
@@ -669,7 +698,7 @@ export function AsteroidsQuiz({
         {phase === "dead" && (
           <Overlay>
             <div className="text-white text-center max-w-sm">
-              <div className="text-[24px] font-extrabold mb-1">Ship destroyed</div>
+              <div className="text-[24px] font-extrabold mb-1">Out of lives</div>
               <p className="text-[13.5px] text-white/80 mb-4">
                 You answered {Object.keys(worldRef.current.answers).length} of {questions.length}. Keep flying, or
                 finish the rest as a normal quiz.
@@ -679,7 +708,7 @@ export function AsteroidsQuiz({
                   type="button"
                   onClick={() => {
                     const g = worldRef.current;
-                    g.lives = 3;
+                    g.lives = livesBudget;
                     g.ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, angle: -Math.PI / 2, invuln: 2.5, shield: false };
                     setHud({ score: g.score, lives: g.lives });
                     // resume: if a question is mid-answer, keep answering; else freeplay

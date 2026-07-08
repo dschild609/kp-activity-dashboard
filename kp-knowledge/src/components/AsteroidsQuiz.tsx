@@ -189,6 +189,8 @@ export function AsteroidsQuiz({
     g.answeredThisQ = false;
     g.wrongThisQ = false;
     g.rocks = g.rocks.filter((r) => !r.answerKey); // clear any labeled rocks
+    g.bullets = []; // drop in-flight shots so none stray into an answer rock
+    g.keys.fire = false;
     const q = questions[i];
     const chars = q.text.length + optionKeys(q).reduce((s, k) => s + optionText(q, k).length, 0);
     g.readingTotal = Math.min(9000, Math.max(3500, 2200 + chars * 22));
@@ -697,6 +699,7 @@ export function AsteroidsQuiz({
                     const g = worldRef.current;
                     g.lives = livesBudget;
                     g.ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, angle: -Math.PI / 2, invuln: 2.5, shield: false };
+                    g.bullets = [];
                     setHud({ score: g.score, lives: g.lives });
                     // resume: if a question is mid-answer, keep answering; else freeplay
                     if (!g.answeredThisQ && g.rocks.some((r) => r.answerKey)) setPhaseBoth("answering");

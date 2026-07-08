@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ComponentProps, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { AnswerKey, KnowledgeQuestion, KnowledgeTest } from "../types/knowledge";
+import cpLogoUrl from "../assets/core-personnel-logo.png";
 
 /* ── Asteroids quiz game ──────────────────────────────────────────────
  * A playable Asteroids game where you answer the test by shooting the
@@ -186,6 +187,7 @@ export function AsteroidsQuiz({
   const ENEMY_START = Math.max(2, Math.ceil(questions.length * 0.5));
   const BOSS_LEVEL = questions.length >= 4 ? questions.length - 2 : -1;
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bossLogoRef = useRef<HTMLImageElement | null>(null); // Core Personnel emblem
   const worldRef = useRef<World>(newWorld());
   // Mirror of the bits the HTML overlays need — updated only on change.
   const [phase, setPhase] = useState<Phase>("intro");
@@ -427,6 +429,11 @@ export function AsteroidsQuiz({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
+    if (!bossLogoRef.current) {
+      const img = new Image();
+      img.src = cpLogoUrl;
+      bossLogoRef.current = img;
+    }
     let raf = 0;
     let prev = performance.now();
     worldRef.current = newWorld();
@@ -832,6 +839,23 @@ export function AsteroidsQuiz({
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
       ctx.lineWidth = 0.9;
       ctx.stroke();
+    }
+
+    // Core Personnel emblem across the flagship's central deck (boss only —
+    // it's illegible at fighter scale). Sways with the hull.
+    const logo = bossLogoRef.current;
+    if (e.boss && logo && logo.complete && logo.naturalWidth > 0) {
+      const ar = logo.naturalWidth / logo.naturalHeight;
+      const dw = s * 1.5;
+      const dh = dw / ar;
+      const oy = s * 0.04;
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      ctx.rotate(ang);
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 12;
+      ctx.drawImage(logo, -dw / 2, oy - dh / 2, dw, dh);
+      ctx.restore();
     }
 
     // boss health bar

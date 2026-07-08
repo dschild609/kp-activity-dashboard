@@ -3,7 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgeLeaderboardEntry } from "../types/knowledge";
 import { listLeaderboard } from "../lib/knowledge";
-import { Th } from "../components/ui";
+import { NoticeBox, Th } from "../components/ui";
 
 const RANK_BADGE = ["🥇", "🥈", "🥉"];
 
@@ -25,13 +25,13 @@ export function LeaderboardPage() {
       </h1>
       <p className="text-[13px] text-kp-text-muted mb-6">
         Top arcade scores from across the team — play a test as Asteroids, clear the questions, and
-        take down the Core Personnel flagship to climb the ranks.
+        rack up bonus points to climb the ranks.
       </p>
 
       {error && (
-        <div className="text-[13px] text-kp-bad bg-kp-bad-bg border border-kp-bad-border rounded-lg p-4 mb-6">
+        <NoticeBox tone="bad" className="mb-6">
           Couldn't load the leaderboard: {error}
-        </div>
+        </NoticeBox>
       )}
 
       {rows === null && !error && (

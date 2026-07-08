@@ -65,7 +65,6 @@ interface Enemy {
   vy: number;
   r: number; // collision radius (doubles as the draw scale)
   hp: number;
-  maxHp: number;
   fireCooldown: number; // ms until the next shot
   boss: boolean; // the apex flagship (bigger, tougher, spread fire)
   sway: number; // phase offset for the menacing sway
@@ -122,10 +121,19 @@ const ENEMY_PATHS: number[][][] = [
   [[0.34, 0.72], [0.44, 1.2], [0.16, 0.72]],
 ];
 const ENEMY_FLAME_Y = 0.72;
+const ENEMY_FLAME_DX = [-0.25, 0.25]; // hoisted so drawEnemy allocates nothing
+const ENEMY_RGB = "255,138,30"; // #ff8a1e, precomputed so we skip hex parsing per frame
+const ENEMY_HULL_FILL = `rgba(${ENEMY_RGB},0.06)`; // constant faint hull tint
+const ENEMY_BOSS_HP = 6;
 
-function hexA(hex: string, a: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+// Rotate+scale a normalized hull point into screen space, writing into a shared
+// scratch instead of allocating a tuple per vertex per frame. Canvas draw is
+// synchronous/single-threaded, so reusing one object is safe.
+const _ep = { x: 0, y: 0 };
+function enemyPoint(e: Enemy, cos: number, sin: number, x: number, y: number) {
+  _ep.x = e.x + (x * cos - y * sin) * e.r;
+  _ep.y = e.y + (x * sin + y * cos) * e.r;
+  return _ep;
 }
 
 function spawnEnemy(boss: boolean): Enemy {
@@ -141,8 +149,7 @@ function spawnEnemy(boss: boolean): Enemy {
     vx: Math.cos(dir) * spd,
     vy: Math.sin(dir) * spd,
     r,
-    hp: boss ? 6 : 1,
-    maxHp: boss ? 6 : 1,
+    hp: boss ? ENEMY_BOSS_HP : 1,
     fireCooldown: 800 + Math.random() * 900,
     boss,
     sway: Math.random() * Math.PI * 2,
@@ -228,7 +235,15 @@ export function AsteroidsQuiz({
 
   function setPhaseBoth(p: Phase) {
     worldRef.current.phase = p;
+    // A run ends the instant it enters a terminal phase — record the score once
+    // here so every end path (cleared or out of lives) reports it exactly once.
+    if (p === "dead" || p === "complete") onScore?.(worldRef.current.score);
     setPhase(p);
+  }
+  // Skip the read countdown (Enter key or the on-screen button): collapse the
+  // timer so the loop unfreezes into answering on the next frame.
+  function skipRead() {
+    worldRef.current.readingUntil = worldRef.current.now;
   }
 
   function spawnRock(size: 1 | 2 | 3, x?: number, y?: number, extra?: Partial<Rock>): Rock {
@@ -288,8 +303,9 @@ export function AsteroidsQuiz({
     // 4s of invulnerability on unfreeze so a rock that drifted onto the ship
     // while it was frozen for reading can't instantly kill you.
     g.ship.invuln = Math.max(g.ship.invuln, 4);
-    g.enemies = [];
-    g.enemyBullets = [];
+    // Brief fire lockout so a held fire key doesn't instantly shoot an answer the
+    // moment the game unfreezes — whether the read timer expired or was skipped.
+    g.fireCooldown = Math.max(g.fireCooldown, 400);
     // one labeled asteroid per option, spread around the perimeter
     g.rocks = g.rocks.filter((r) => !r.answerKey);
     keys.forEach((key, idx) => {
@@ -350,10 +366,8 @@ export function AsteroidsQuiz({
     g.flash = { color: clean ? COLORS.good : COLORS.warn, until: g.now + 450 };
     setHud({ score: g.score, lives: g.lives });
     const last = g.qIndex >= questions.length - 1;
-    if (last) {
-      onScore?.(g.score); // cleared the whole quiz — record the run
-      window.setTimeout(() => setPhaseBoth("complete"), 700);
-    } else enterFreeplay();
+    if (last) window.setTimeout(() => setPhaseBoth("complete"), 700);
+    else enterFreeplay();
   }
   // Between-questions arcade break. At high levels this is where hostile
   // starships jump in; the final free-play summons the Core Personnel flagship.
@@ -363,7 +377,7 @@ export function AsteroidsQuiz({
     g.freeplayUntil = g.now + (boss ? 15000 : 8500);
     if (boss) {
       g.enemies.push(spawnEnemy(true));
-      g.alert = { text: "⚠ FLAGSHIP INBOUND — CORE PERSONNEL", until: g.now + 2800 };
+      g.alert = { text: "⚠ WARNING — ENEMY FLAGSHIP INBOUND", until: g.now + 2800 };
     } else if (g.qIndex >= ENEMY_START) {
       g.alert = { text: "⚠ HOSTILE STARSHIPS INBOUND", until: g.now + 2200 };
     }
@@ -399,8 +413,7 @@ export function AsteroidsQuiz({
     g.lives -= 1;
     setHud({ score: g.score, lives: g.lives });
     if (g.lives <= 0) {
-      onScore?.(g.score); // game over — record whatever they racked up
-      setPhaseBoth("dead");
+      setPhaseBoth("dead"); // terminal phase → setPhaseBoth records the score
       return true;
     }
     return false;
@@ -794,52 +807,50 @@ export function AsteroidsQuiz({
     ctx.restore();
   }
 
-  // Core Personnel flagship silhouette — neon double-stroke, twin flames, sway.
+  // Enemy flagship silhouette — neon double-stroke, twin flames, sway.
   function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, t: number) {
-    const color = ENEMY_COLOR;
     const s = e.r;
     const ang = Math.sin(t * 0.0016 + e.sway) * 0.12; // slow menace sway
     const cos = Math.cos(ang);
     const sin = Math.sin(ang);
-    const tp = (x: number, y: number): [number, number] => [
-      e.x + (x * cos - y * sin) * s,
-      e.y + (x * sin + y * cos) * s,
-    ];
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
+    ctx.shadowColor = ENEMY_COLOR; // every glow in this draw uses the same colour
     const flick = 0.55 + 0.45 * Math.abs(Math.sin(t * 0.016 + e.sway));
 
     // twin thruster flames
-    for (const dx of [-0.25, 0.25]) {
-      const bl = tp(dx - 0.09, ENEMY_FLAME_Y);
-      const tip = tp(dx, ENEMY_FLAME_Y + 0.34 * flick);
-      const br = tp(dx + 0.09, ENEMY_FLAME_Y);
+    for (const dx of ENEMY_FLAME_DX) {
+      let p = enemyPoint(e, cos, sin, dx - 0.09, ENEMY_FLAME_Y);
+      const blx = p.x;
+      const bly = p.y;
+      p = enemyPoint(e, cos, sin, dx, ENEMY_FLAME_Y + 0.34 * flick);
+      const tipx = p.x;
+      const tipy = p.y;
+      p = enemyPoint(e, cos, sin, dx + 0.09, ENEMY_FLAME_Y);
       ctx.beginPath();
-      ctx.moveTo(bl[0], bl[1]);
-      ctx.lineTo(tip[0], tip[1]);
-      ctx.lineTo(br[0], br[1]);
+      ctx.moveTo(blx, bly);
+      ctx.lineTo(tipx, tipy);
+      ctx.lineTo(p.x, p.y);
       ctx.closePath();
-      ctx.shadowColor = color;
       ctx.shadowBlur = 14;
-      ctx.fillStyle = hexA(color, 0.28 + 0.35 * flick);
+      ctx.fillStyle = `rgba(${ENEMY_RGB},${0.28 + 0.35 * flick})`;
       ctx.fill();
       ctx.shadowBlur = 0;
     }
 
-    // hull — neon double-stroke (color glow + thin white inner line)
-    for (const p of ENEMY_PATHS) {
+    // hull — neon double-stroke (colour glow + thin white inner line)
+    for (const path of ENEMY_PATHS) {
       ctx.beginPath();
-      for (let i = 0; i < p.length; i++) {
-        const q = tp(p[i][0], p[i][1]);
-        if (i === 0) ctx.moveTo(q[0], q[1]);
-        else ctx.lineTo(q[0], q[1]);
+      for (let i = 0; i < path.length; i++) {
+        const q = enemyPoint(e, cos, sin, path[i][0], path[i][1]);
+        if (i === 0) ctx.moveTo(q.x, q.y);
+        else ctx.lineTo(q.x, q.y);
       }
       ctx.closePath();
-      ctx.fillStyle = hexA(color, 0.06);
+      ctx.fillStyle = ENEMY_HULL_FILL;
       ctx.fill();
-      ctx.shadowColor = color;
       ctx.shadowBlur = 12;
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = ENEMY_COLOR;
       ctx.lineWidth = 2.2;
       ctx.stroke();
       ctx.shadowBlur = 0;
@@ -848,8 +859,8 @@ export function AsteroidsQuiz({
       ctx.stroke();
     }
 
-    // Core Personnel emblem across the flagship's central deck (boss only —
-    // it's illegible at fighter scale). Sways with the hull.
+    // Company emblem across the flagship's central deck (boss only — illegible
+    // at fighter scale). Sways with the hull.
     const logo = bossLogoRef.current;
     if (e.boss && logo && logo.complete && logo.naturalWidth > 0) {
       const ar = logo.naturalWidth / logo.naturalHeight;
@@ -859,7 +870,6 @@ export function AsteroidsQuiz({
       ctx.save();
       ctx.translate(e.x, e.y);
       ctx.rotate(ang);
-      ctx.shadowColor = color;
       ctx.shadowBlur = 12;
       ctx.drawImage(logo, -dw / 2, oy - dh / 2, dw, dh);
       ctx.restore();
@@ -872,8 +882,8 @@ export function AsteroidsQuiz({
       const by = e.y - e.r * 1.75;
       ctx.fillStyle = "rgba(255,255,255,0.16)";
       ctx.fillRect(bx, by, bw, 5);
-      ctx.fillStyle = color;
-      ctx.fillRect(bx, by, bw * Math.max(0, e.hp / e.maxHp), 5);
+      ctx.fillStyle = ENEMY_COLOR;
+      ctx.fillRect(bx, by, bw * Math.max(0, e.hp / ENEMY_BOSS_HP), 5);
     }
   }
 
@@ -885,15 +895,14 @@ export function AsteroidsQuiz({
       if (k === "arrowleft" || k === "a") g.keys.left = down;
       else if (k === "arrowright" || k === "d") g.keys.right = down;
       else if (k === "arrowup" || k === "w") g.keys.thrust = down;
-      else if (k === " " || k === "spacebar") {
-        e.preventDefault();
+      else if (k === "enter") {
         if (down && g.phase === "reading") {
-          g.readingUntil = g.now; // skip the read timer
-          g.keys.fire = false;
-          g.fireCooldown = 400; // brief lockout so a held Space doesn't insta-shoot an answer
-          return;
+          e.preventDefault();
+          skipRead(); // Enter skips the read countdown
         }
+      } else if (k === " " || k === "spacebar") {
         g.keys.fire = down;
+        e.preventDefault();
       } else return;
     };
     const kd = (e: KeyboardEvent) => setKey(e, true);
@@ -935,6 +944,9 @@ export function AsteroidsQuiz({
         </button>
       </div>
 
+      {/* Fill the width, but cap by viewport height so the aspect-locked field
+       * never overflows. 16.5rem ≈ the surrounding chrome (header row + the
+       * answer panel/help text below + page padding) reserved off 100dvh. */}
       <div
         className="relative mx-auto rounded-xl overflow-hidden border border-kp-border shadow-2xs bg-black"
         style={{ aspectRatio: `${W} / ${H}`, width: `min(100%, calc((100dvh - 16.5rem) * ${W} / ${H}))` }}
@@ -954,8 +966,7 @@ export function AsteroidsQuiz({
                 A question freezes the game; read it, then shoot the asteroid with the <b>correct</b>{" "}
                 answer — the rest blow up for bonus points. A wrong shot (or a crash) costs a life, and you
                 get <b>{livesBudget}</b> {livesBudget === 1 ? "life" : "lives"} — your wrong-answer budget.
-                At <b className="text-[#ff8a1e]">high levels</b>, hostile Core Personnel starships jump in — blast them
-                for big points, but don't get hit. Clear all {questions.length} to finish.
+                Clear all {questions.length} to finish.
               </p>
               <button
                 type="button"
@@ -989,15 +1000,10 @@ export function AsteroidsQuiz({
               </div>
               <div className="mt-3 flex flex-col items-center gap-1.5">
                 <button
-                  onClick={() => {
-                    const g = worldRef.current;
-                    g.readingUntil = g.now; // skip the read timer
-                    g.keys.fire = false;
-                    g.fireCooldown = 400; // brief lockout so the tap/Space doesn't insta-shoot
-                  }}
+                  onClick={skipRead}
                   className="text-[12.5px] font-semibold text-kp-text bg-kp-surface-alt hover:bg-kp-border border border-kp-border rounded-lg px-3.5 py-1.5 transition-colors"
                 >
-                  Press <span className="font-mono font-bold">Space</span> to continue →
+                  Press <span className="font-mono font-bold">Enter</span> to continue →
                 </button>
                 <div className="text-[11px] text-kp-text-faint">Then shoot the asteroid with the correct answer</div>
               </div>
@@ -1019,21 +1025,15 @@ export function AsteroidsQuiz({
                 <button
                   type="button"
                   onClick={() => {
-                    // full restart from question 1 (fresh score, lives, answers)
-                    const g = worldRef.current;
-                    g.score = 0;
-                    g.lives = livesBudget;
-                    g.answers = {};
-                    g.rocks = [];
-                    g.particles = [];
-                    g.enemies = [];
-                    g.enemyBullets = [];
-                    g.alert = null;
-                    g.power = { rapidUntil: 0, spreadUntil: 0 };
-                    g.ship = { x: W / 2, y: H / 2, vx: 0, vy: 0, angle: -Math.PI / 2, invuln: 2, shield: false };
+                    // Full restart from question 1: reset the whole world (never
+                    // drifts from the World shape), but keep the live clock so
+                    // enterReading(0)'s read-timer deadline lands in the future.
+                    const now = worldRef.current.now;
+                    worldRef.current = newWorld();
+                    worldRef.current.now = now;
                     setHud({ score: 0, lives: livesBudget });
                     setReadingLeft(1);
-                    enterReading(0); // uses the live g.now, so the read timer is correct
+                    enterReading(0);
                   }}
                   className="px-5 py-2.5 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[14px] font-bold rounded-lg"
                 >

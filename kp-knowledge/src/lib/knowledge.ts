@@ -189,14 +189,15 @@ export async function submitHighScore(args: {
       testName: args.test.name,
       updatedAt: serverTimestamp(),
     };
-    if (!snap.exists()) await setDoc(ref, row);
-    else if (args.score > (snap.data().score ?? 0)) await updateDoc(ref, row);
+    // `row` is the complete doc, so one setDoc covers both create and best-of
+    // update (the rules also enforce score-can-only-increase).
+    if (!snap.exists() || args.score > (snap.data().score ?? 0)) await setDoc(ref, row);
   } catch {
     /* leaderboard is a nice-to-have — swallow failures */
   }
 }
 
-/* Top arcade scores across everyone (world-readable), highest first. */
+/* Top arcade scores across everyone with knowledge access, highest first. */
 export async function listLeaderboard(max = 25): Promise<KnowledgeLeaderboardEntry[]> {
   const snap = await getDocs(
     query(collection(db, LEADERBOARD), orderBy("score", "desc"), limit(max)),

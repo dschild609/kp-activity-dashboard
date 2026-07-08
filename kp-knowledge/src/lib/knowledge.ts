@@ -23,6 +23,7 @@ import {
   type KnowledgeAttempt,
   type KnowledgeLeaderboardEntry,
   type KnowledgeOpen,
+  type KnowledgePoints,
   type KnowledgeQuestion,
   type KnowledgeTest,
 } from "../types/knowledge";
@@ -31,6 +32,7 @@ const TESTS = "knowledgeTests";
 const ATTEMPTS = "knowledgeAttempts";
 const OPENS = "knowledgeOpens";
 const LEADERBOARD = "knowledgeLeaderboard";
+const POINTS = "knowledgePoints";
 
 /* Record the first time this user opened a test (immutable — later opens are
  * a no-op). Best-effort: never blocks or throws into the taker's flow. */
@@ -165,6 +167,78 @@ export async function submitAttempt(args: {
     answers: args.result.graded,
     submittedAt: serverTimestamp(),
   });
+  // Award points = your best % on this test (topped up if you beat it).
+  await awardTestPoints(args.uid, args.userName, args.test.id, args.result.score);
+}
+
+/* ── Points wallet ────────────────────────────────────────────────────
+ * A spendable per-user balance (doc id = uid). Earned from tests (best %
+ * per test, weighted heavy) + Asteroids (best score ÷ 100). Best-effort
+ * client writes that mirror the leaderboard pattern; `spent` is preserved
+ * from the stored doc (only managers change it as points are redeemed). */
+async function _writePoints(
+  uid: string,
+  userName: string,
+  mutate: (p: {
+    perTest: Record<string, number>;
+    asteroidsPoints: number;
+    spent: number;
+  }) => void,
+): Promise<void> {
+  try {
+    const ref = doc(db, POINTS, uid);
+    const snap = await getDoc(ref);
+    const cur = (snap.exists() ? snap.data() : {}) as Partial<KnowledgePoints>;
+    const p = {
+      perTest: { ...(cur.perTest ?? {}) },
+      asteroidsPoints: cur.asteroidsPoints ?? 0,
+      spent: cur.spent ?? 0,
+    };
+    mutate(p);
+    const testPoints = Object.values(p.perTest).reduce((a, b) => a + b, 0);
+    const earned = testPoints + p.asteroidsPoints;
+    await setDoc(ref, {
+      uid,
+      userName,
+      perTest: p.perTest,
+      testPoints,
+      asteroidsPoints: p.asteroidsPoints,
+      earned,
+      spent: p.spent,
+      balance: earned - p.spent,
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    /* points are a nice-to-have — never break the flow they hang off */
+  }
+}
+
+export async function awardTestPoints(
+  uid: string,
+  userName: string,
+  testId: string,
+  scorePct: number,
+): Promise<void> {
+  const pts = Math.max(0, Math.round(scorePct));
+  await _writePoints(uid, userName, (p) => {
+    p.perTest[testId] = Math.max(p.perTest[testId] ?? 0, pts);
+  });
+}
+
+export async function awardAsteroidsPoints(
+  uid: string,
+  userName: string,
+  bestScore: number,
+): Promise<void> {
+  const pts = Math.max(0, Math.floor(bestScore / 100));
+  await _writePoints(uid, userName, (p) => {
+    p.asteroidsPoints = Math.max(p.asteroidsPoints, pts);
+  });
+}
+
+export async function getPoints(uid: string): Promise<KnowledgePoints | null> {
+  const snap = await getDoc(doc(db, POINTS, uid));
+  return snap.exists() ? (snap.data() as KnowledgePoints) : null;
 }
 
 /* ── Asteroids leaderboard ───────────────────────────────────────────
@@ -191,7 +265,11 @@ export async function submitHighScore(args: {
     };
     // `row` is the complete doc, so one setDoc covers both create and best-of
     // update (the rules also enforce score-can-only-increase).
-    if (!snap.exists() || args.score > (snap.data().score ?? 0)) await setDoc(ref, row);
+    if (!snap.exists() || args.score > (snap.data().score ?? 0)) {
+      await setDoc(ref, row);
+      // A new personal best also tops up the arcade share of their points.
+      await awardAsteroidsPoints(args.uid, args.userName, args.score);
+    }
   } catch {
     /* leaderboard is a nice-to-have — swallow failures */
   }

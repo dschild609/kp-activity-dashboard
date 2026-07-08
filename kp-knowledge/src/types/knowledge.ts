@@ -188,6 +188,22 @@ export interface KnowledgeAttempt {
 /* One row per user on the global Asteroids high-score leaderboard — their
  * personal best across any test. Doc id is the user's uid (best-of upsert).
  * `score` is arcade points, not a pass percentage. */
+/* A user's spendable points balance (doc id = uid).
+ * Earned = test points (best % per test, topped up) + asteroids points
+ * (best arcade score ÷ 100). Balance = earned − spent (spent is manager-set as
+ * points are redeemed). Tests are weighted heavier than the arcade game. */
+export interface KnowledgePoints {
+  uid: string;
+  userName: string;
+  perTest: Record<string, number>; // best % awarded per testId
+  testPoints: number;              // sum of perTest
+  asteroidsPoints: number;         // floor(best arcade score / 100)
+  earned: number;                  // testPoints + asteroidsPoints
+  spent: number;                   // redeemed (manager-adjusted)
+  balance: number;                 // earned − spent
+  updatedAt?: Timestamp;
+}
+
 export interface KnowledgeLeaderboardEntry {
   id: string; // = uid
   uid: string;

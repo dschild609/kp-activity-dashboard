@@ -1,6 +1,8 @@
-import { NavLink } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import type { User } from "firebase/auth";
 import { useTheme } from "../hooks/useTheme";
+import { getPoints } from "../lib/knowledge";
 
 interface NavFlags {
   canAdmin: boolean;
@@ -36,6 +38,24 @@ const TAB_INACTIVE = "font-medium text-white/70 hover:text-white hover:bg-white/
 
 export function TopNav({ user, canAdmin, canUseSopBuilder, onSignOut }: TopNavProps) {
   const { toggle, resolved } = useTheme();
+  const location = useLocation();
+  const [balance, setBalance] = useState<number | null>(null);
+
+  // The signed-in user's spendable points. Refetch on navigation so it
+  // reflects points just earned by finishing a test or an Asteroids run.
+  useEffect(() => {
+    if (!user) {
+      setBalance(null);
+      return;
+    }
+    let alive = true;
+    getPoints(user.uid)
+      .then((p) => alive && setBalance(p?.balance ?? 0))
+      .catch(() => alive && setBalance(null));
+    return () => {
+      alive = false;
+    };
+  }, [user, location.pathname]);
 
   const visibleDestinations = NAV_DESTINATIONS.filter((d) =>
     d.visible({ canAdmin, canUseSopBuilder }),
@@ -78,6 +98,16 @@ export function TopNav({ user, canAdmin, canUseSopBuilder, onSignOut }: TopNavPr
         </div>
 
         <div className="flex items-center gap-2">
+          {balance !== null && (
+            <span
+              title={`Your spendable points: ${balance.toLocaleString()}`}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-white text-[12.5px] font-bold tabular-nums"
+            >
+              <span className="text-amber-300">★</span>
+              {balance.toLocaleString()}
+              <span className="hidden sm:inline font-medium text-white/60">pts</span>
+            </span>
+          )}
           <button
             type="button"
             onClick={toggle}

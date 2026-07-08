@@ -8,11 +8,13 @@ import {
   getTest,
   gradeAnswers,
   listAttempts,
+  getPoints,
   recordOpen,
   submitAttempt,
   submitHighScore,
   type GradeResult,
 } from "../lib/knowledge";
+import { DEFAULT_SHIP_ID } from "../lib/ships";
 import { SlideView, sectionNumberAt } from "../components/SlideView";
 import { VideoPlayer } from "../components/VideoPlayer";
 import { AsteroidsQuiz } from "../components/AsteroidsQuiz";
@@ -71,6 +73,15 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
   const [state, setState] = useState<PageState>({ phase: "loading" });
   const [answers, setAnswers] = useState<Record<string, AnswerKey | null>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [shipId, setShipId] = useState(DEFAULT_SHIP_ID);
+
+  // The pilot's equipped ship (bought in the Store) — flown in the arcade quiz.
+  useEffect(() => {
+    if (!user) return;
+    getPoints(user.uid)
+      .then((p) => setShipId(p?.equippedShip ?? DEFAULT_SHIP_ID))
+      .catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     if (!testId || !user) return;
@@ -214,6 +225,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
       <AsteroidsQuiz
         test={state.test}
         quiz={state.quiz}
+        shipId={shipId}
         onComplete={(a) => submitAnswers(a)}
         onScore={(score) => {
           // Record the arcade run on the global leaderboard (not in preview).

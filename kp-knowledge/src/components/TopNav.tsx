@@ -27,6 +27,7 @@ const NAV_DESTINATIONS: NavDestination[] = [
   { label: "Tests", to: "/", end: true, visible: () => true },
   { label: "My Results", to: "/results", visible: () => true },
   { label: "Leaderboard", to: "/leaderboard", visible: () => true },
+  { label: "Store", to: "/store", visible: () => true },
   { label: "Admin", to: "/admin", visible: (f) => f.canAdmin },
   // Create hosts "Create with AI" (admins) and "SOP Builder" (SOP creators).
   { label: "Create", to: "/create", visible: (f) => f.canAdmin || f.canUseSopBuilder },
@@ -99,14 +100,15 @@ export function TopNav({ user, canAdmin, canUseSopBuilder, onSignOut }: TopNavPr
 
         <div className="flex items-center gap-2">
           {balance !== null && (
-            <span
-              title={`Your spendable points: ${balance.toLocaleString()}`}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-white text-[12.5px] font-bold tabular-nums"
+            <NavLink
+              to="/store"
+              title={`${balance.toLocaleString()} points — spend them in the Store`}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[12.5px] font-bold tabular-nums transition-colors"
             >
               <span className="text-amber-300">★</span>
               {balance.toLocaleString()}
               <span className="hidden sm:inline font-medium text-white/60">pts</span>
-            </span>
+            </NavLink>
           )}
           <button
             type="button"

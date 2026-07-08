@@ -199,8 +199,10 @@ export interface KnowledgePoints {
   testPoints: number;              // sum of perTest
   asteroidsPoints: number;         // floor(best arcade score / 100)
   earned: number;                  // testPoints + asteroidsPoints
-  spent: number;                   // redeemed (manager-adjusted)
+  spent: number;                   // redeemed in the store (or manager-adjusted)
   balance: number;                 // earned − spent
+  owned?: string[];                // purchased store item ids (ship skins, …)
+  equippedShip?: string;           // the ship id the pilot flies
   updatedAt?: Timestamp;
 }
 

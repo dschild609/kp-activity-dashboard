@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ComponentProps, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { AnswerKey, KnowledgeQuestion, KnowledgeTest } from "../types/knowledge";
+import { drawShipHull } from "../lib/ships";
 import cpLogoUrl from "../assets/core-personnel-logo.png";
 
 /* ── Asteroids quiz game ──────────────────────────────────────────────
@@ -179,6 +180,7 @@ export function AsteroidsQuiz({
   onFallback,
   onExit,
   onScore,
+  shipId,
 }: {
   quiz: { questions: KnowledgeQuestion[] };
   test: KnowledgeTest;
@@ -188,6 +190,8 @@ export function AsteroidsQuiz({
   // Fires with the final arcade score when a run ends (cleared OR game over),
   // so the page can record it on the leaderboard. Best-of is handled downstream.
   onScore?: (score: number) => void;
+  // The pilot's equipped ship skin (from the Store); defaults to the classic hull.
+  shipId?: string;
 }) {
   const questions = quiz.questions;
   // Lives = the test's wrong-answer budget: if they can miss N and still
@@ -787,15 +791,7 @@ export function AsteroidsQuiz({
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.rotate(s.angle);
-    ctx.beginPath();
-    ctx.moveTo(16, 0);
-    ctx.lineTo(-12, -10);
-    ctx.lineTo(-7, 0);
-    ctx.lineTo(-12, 10);
-    ctx.closePath();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = COLORS.ship;
-    ctx.stroke();
+    drawShipHull(ctx, shipId);
     if (s.shield) {
       ctx.beginPath();
       ctx.arc(0, 0, 22, 0, Math.PI * 2);

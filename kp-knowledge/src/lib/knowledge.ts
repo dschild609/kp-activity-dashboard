@@ -16,6 +16,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { DEFAULT_SHIP_ID } from "./ships";
 import {
   normalizeSlide,
   type AnswerKey,
@@ -176,23 +177,29 @@ export async function submitAttempt(args: {
  * per test, weighted heavy) + Asteroids (best score ÷ 100). Best-effort
  * client writes that mirror the leaderboard pattern; `spent` is preserved
  * from the stored doc (only managers change it as points are redeemed). */
+interface PointsMutable {
+  perTest: Record<string, number>;
+  asteroidsPoints: number;
+  spent: number;
+  owned: string[];
+  equippedShip: string;
+}
+
 async function _writePoints(
   uid: string,
   userName: string,
-  mutate: (p: {
-    perTest: Record<string, number>;
-    asteroidsPoints: number;
-    spent: number;
-  }) => void,
+  mutate: (p: PointsMutable) => void,
 ): Promise<void> {
   try {
     const ref = doc(db, POINTS, uid);
     const snap = await getDoc(ref);
     const cur = (snap.exists() ? snap.data() : {}) as Partial<KnowledgePoints>;
-    const p = {
+    const p: PointsMutable = {
       perTest: { ...(cur.perTest ?? {}) },
       asteroidsPoints: cur.asteroidsPoints ?? 0,
       spent: cur.spent ?? 0,
+      owned: [...(cur.owned ?? [])],
+      equippedShip: cur.equippedShip ?? DEFAULT_SHIP_ID,
     };
     mutate(p);
     const testPoints = Object.values(p.perTest).reduce((a, b) => a + b, 0);
@@ -206,11 +213,54 @@ async function _writePoints(
       earned,
       spent: p.spent,
       balance: earned - p.spent,
+      owned: p.owned,
+      equippedShip: p.equippedShip,
       updatedAt: serverTimestamp(),
     });
   } catch {
     /* points are a nice-to-have — never break the flow they hang off */
   }
+}
+
+/** Buy a store item: deducts its cost (raises `spent`), records ownership, and
+ *  auto-equips a ship. Throws if the balance can't cover it. Not best-effort —
+ *  the Store surfaces failures to the buyer. */
+export async function purchaseShip(
+  uid: string,
+  userName: string,
+  ship: { id: string; cost: number },
+): Promise<void> {
+  const ref = doc(db, POINTS, uid);
+  const snap = await getDoc(ref);
+  const cur = (snap.exists() ? snap.data() : {}) as Partial<KnowledgePoints>;
+  const owned = new Set(cur.owned ?? []);
+  if (owned.has(ship.id) || ship.id === DEFAULT_SHIP_ID) return; // already owned
+  const balance = cur.balance ?? 0;
+  if (balance < ship.cost) throw new Error("Not enough points for that ship.");
+  const testPoints = Object.values(cur.perTest ?? {}).reduce((a, b) => a + b, 0);
+  const earned = testPoints + (cur.asteroidsPoints ?? 0);
+  const spent = (cur.spent ?? 0) + ship.cost;
+  owned.add(ship.id);
+  await setDoc(ref, {
+    uid,
+    userName,
+    perTest: cur.perTest ?? {},
+    testPoints,
+    asteroidsPoints: cur.asteroidsPoints ?? 0,
+    earned,
+    spent,
+    balance: earned - spent,
+    owned: [...owned],
+    equippedShip: ship.id, // fly it right away
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Equip an owned ship (or the free default). */
+export async function equipShip(uid: string, userName: string, shipId: string): Promise<void> {
+  await _writePoints(uid, userName, (p) => {
+    if (shipId === DEFAULT_SHIP_ID || p.owned.includes(shipId)) p.equippedShip = shipId;
+  });
 }
 
 export async function awardTestPoints(

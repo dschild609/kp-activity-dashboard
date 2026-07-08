@@ -5,6 +5,7 @@ import { TestsPage } from "./pages/TestsPage";
 import { TakeTestPage } from "./pages/TakeTestPage";
 import { MyResultsPage } from "./pages/MyResultsPage";
 import { LeaderboardPage } from "./pages/LeaderboardPage";
+import { StorePage } from "./pages/StorePage";
 import { AsteroidsDemo } from "./components/AsteroidsDemo";
 
 /* Admin pages pull in heavyweight admin-only libs (pdf.js, SheetJS) —
@@ -37,6 +38,7 @@ function App() {
           <Route path="tests/:testId" element={<TakeTestPage />} />
           <Route path="results" element={<MyResultsPage />} />
           <Route path="leaderboard" element={<LeaderboardPage />} />
+          <Route path="store" element={<StorePage />} />
           <Route
             path="admin"
             element={

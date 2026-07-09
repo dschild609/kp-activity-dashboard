@@ -18,3 +18,7 @@ Thumbs.db
 # Streamlit
 .streamlit/secrets.toml
 kp-test-app/
+
+# Never commit device/API secrets (kept local intentionally)
+secrets.py
+**/secrets.py

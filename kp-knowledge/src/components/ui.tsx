@@ -75,6 +75,61 @@ export function SmallButton({
   );
 }
 
+/* Toggleable selection chip (crimson when active) — role pickers, tag pickers. */
+export function Chip({
+  label,
+  active,
+  onClick,
+  mono,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  mono?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`px-2.5 py-1 rounded-lg border text-[12.5px] font-semibold transition-colors ${
+        mono ? "font-mono" : ""
+      } ${
+        active
+          ? "bg-kp-crimson-soft text-kp-crimson-soft-text border-kp-crimson-soft"
+          : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/* Section-switcher pill (navy when active) — the admin tabs, arcade sub-tabs. */
+export function TabPill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 whitespace-nowrap rounded-lg border px-3.5 py-2 text-[13.5px] font-semibold transition-colors ${
+        active
+          ? "bg-kp-navy text-white border-kp-navy"
+          : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function Th({ children, align }: { children: React.ReactNode; align?: "right" }) {
   return (
     <th

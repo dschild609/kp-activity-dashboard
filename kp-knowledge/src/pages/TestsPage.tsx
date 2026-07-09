@@ -4,7 +4,7 @@ import type { AuthState } from "../hooks/useAuth";
 import type { Assignment, KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
 import { attemptGate, listAttempts, listTests } from "../lib/knowledge";
 import { assignmentMatchesUser, daysUntil, formatDue, normalizeRole } from "../lib/roster";
-import { subscribeTags, subscribeTagPermissions, testVisibleForRole, type TagPermissions } from "../lib/tags";
+import { mergeTagVocabulary, subscribeTags, subscribeTagPermissions, testVisibleForRole, type TagPermissions } from "../lib/tags";
 import { Pill } from "../components/ui";
 
 type TabKey = "assigned" | "library";
@@ -63,13 +63,7 @@ export function TestsPage() {
   const isAssignedToMe = (t: KnowledgeTest) =>
     !!user && assignmentMatchesUser(t.assignment, { uid: user.uid, role, branch });
 
-  // Full vocabulary (in admin order) plus any legacy tags a test still
-  // carries that aren't in the vocabulary, so every test stays filterable.
-  const allTags = useMemo(() => {
-    const used = new Set((tests ?? []).flatMap((t) => t.tags));
-    const extra = [...used].filter((t) => !vocab.includes(t)).sort();
-    return [...vocab, ...extra];
-  }, [tests, vocab]);
+  const allTags = useMemo(() => mergeTagVocabulary(vocab, tests ?? []), [tests, vocab]);
 
   // Assigned-to-me, sorted as a to-do list: overdue/soonest-due first, then
   // undated, then already-passed at the bottom.
@@ -252,7 +246,7 @@ function TestCard({
               : "Start Test"}
           </Link>
         )}
-        {gate.reason === "passed" && (
+        {gate.retakeable && (
           <Link
             to={`/tests/${test.id}?retake=1`}
             className="inline-block px-4 py-2 text-[13.5px] font-semibold rounded-lg border border-kp-border text-kp-text-muted hover:text-kp-navy hover:bg-kp-surface-alt transition-colors"

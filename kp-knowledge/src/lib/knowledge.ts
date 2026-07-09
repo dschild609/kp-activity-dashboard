@@ -7,6 +7,7 @@ import {
   getDocs,
   increment,
   limit,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -16,7 +17,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { DEFAULT_SHIP_ID } from "./ships";
+import { DEFAULT_SHIP_ID, ownedShipIds } from "./ships";
 import {
   normalizeSlide,
   type AnswerKey,
@@ -148,6 +149,12 @@ export function gradeAnswers(
   };
 }
 
+/* The one fallback chain for the display name we stamp into Firestore docs
+ * (attempts, leaderboard rows, wallets) — keep every writer consistent. */
+export function userNameOf(u: { displayName: string | null; email: string | null }): string {
+  return u.displayName ?? u.email ?? "Unknown";
+}
+
 export async function submitAttempt(args: {
   uid: string;
   userName: string;
@@ -155,7 +162,7 @@ export async function submitAttempt(args: {
   test: KnowledgeTest;
   result: GradeResult;
 }): Promise<void> {
-  await addDoc(collection(db, ATTEMPTS), {
+  const attempt = addDoc(collection(db, ATTEMPTS), {
     uid: args.uid,
     userName: args.userName,
     userEmail: args.userEmail,
@@ -169,14 +176,15 @@ export async function submitAttempt(args: {
     submittedAt: serverTimestamp(),
   });
   // Award points = your best % on this test (topped up if you beat it).
-  await awardTestPoints(args.uid, args.userName, args.test.id, args.result.score);
+  // Best-effort and independent of the attempt write — run them in parallel so
+  // the submit spinner doesn't wait an extra round trip on the award.
+  await Promise.all([attempt, awardTestPoints(args.uid, args.userName, args.test.id, args.result.score)]);
 }
 
 /* ── Points wallet ────────────────────────────────────────────────────
  * A spendable per-user balance (doc id = uid). Earned from tests (best %
- * per test, weighted heavy) + Asteroids (best score ÷ 100). Best-effort
- * client writes that mirror the leaderboard pattern; `spent` is preserved
- * from the stored doc (only managers change it as points are redeemed). */
+ * per test, weighted heavy) + Asteroids (best score ÷ 100); `spent` rises
+ * as points are redeemed in the Store (or by a manager). */
 interface PointsMutable {
   perTest: Record<string, number>;
   asteroidsPoints: number;
@@ -185,81 +193,66 @@ interface PointsMutable {
   equippedShip: string;
 }
 
-async function _writePoints(
+/* The ONE place the wallet doc is read, derived (testPoints/earned/balance),
+ * and written. Callers change the wallet through `mutate`; returning false
+ * skips the write (nothing to do). Throws on failure — user-initiated flows
+ * (buy/equip) surface errors, while the award paths wrap this best-effort. */
+async function writePoints(
   uid: string,
   userName: string,
-  mutate: (p: PointsMutable) => void,
+  mutate: (p: PointsMutable) => boolean | void,
 ): Promise<void> {
-  try {
-    const ref = doc(db, POINTS, uid);
-    const snap = await getDoc(ref);
-    const cur = (snap.exists() ? snap.data() : {}) as Partial<KnowledgePoints>;
-    const p: PointsMutable = {
-      perTest: { ...(cur.perTest ?? {}) },
-      asteroidsPoints: cur.asteroidsPoints ?? 0,
-      spent: cur.spent ?? 0,
-      owned: [...(cur.owned ?? [])],
-      equippedShip: cur.equippedShip ?? DEFAULT_SHIP_ID,
-    };
-    mutate(p);
-    const testPoints = Object.values(p.perTest).reduce((a, b) => a + b, 0);
-    const earned = testPoints + p.asteroidsPoints;
-    await setDoc(ref, {
-      uid,
-      userName,
-      perTest: p.perTest,
-      testPoints,
-      asteroidsPoints: p.asteroidsPoints,
-      earned,
-      spent: p.spent,
-      balance: earned - p.spent,
-      owned: p.owned,
-      equippedShip: p.equippedShip,
-      updatedAt: serverTimestamp(),
-    });
-  } catch {
-    /* points are a nice-to-have — never break the flow they hang off */
-  }
+  const ref = doc(db, POINTS, uid);
+  const snap = await getDoc(ref);
+  const cur = (snap.exists() ? snap.data() : {}) as Partial<KnowledgePoints>;
+  const p: PointsMutable = {
+    perTest: { ...(cur.perTest ?? {}) },
+    asteroidsPoints: cur.asteroidsPoints ?? 0,
+    spent: cur.spent ?? 0,
+    owned: [...(cur.owned ?? [])],
+    equippedShip: cur.equippedShip ?? DEFAULT_SHIP_ID,
+  };
+  if (mutate(p) === false) return;
+  const testPoints = Object.values(p.perTest).reduce((a, b) => a + b, 0);
+  const earned = testPoints + p.asteroidsPoints;
+  await setDoc(ref, {
+    uid,
+    userName,
+    perTest: p.perTest,
+    testPoints,
+    asteroidsPoints: p.asteroidsPoints,
+    earned,
+    spent: p.spent,
+    balance: earned - p.spent,
+    owned: p.owned,
+    equippedShip: p.equippedShip,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 /** Buy a store item: deducts its cost (raises `spent`), records ownership, and
- *  auto-equips a ship. Throws if the balance can't cover it. Not best-effort —
- *  the Store surfaces failures to the buyer. */
+ *  auto-equips the ship. Throws if the balance can't cover it — the Store
+ *  surfaces failures to the buyer. */
 export async function purchaseShip(
   uid: string,
   userName: string,
   ship: { id: string; cost: number },
 ): Promise<void> {
-  const ref = doc(db, POINTS, uid);
-  const snap = await getDoc(ref);
-  const cur = (snap.exists() ? snap.data() : {}) as Partial<KnowledgePoints>;
-  const owned = new Set(cur.owned ?? []);
-  if (owned.has(ship.id) || ship.id === DEFAULT_SHIP_ID) return; // already owned
-  const balance = cur.balance ?? 0;
-  if (balance < ship.cost) throw new Error("Not enough points for that ship.");
-  const testPoints = Object.values(cur.perTest ?? {}).reduce((a, b) => a + b, 0);
-  const earned = testPoints + (cur.asteroidsPoints ?? 0);
-  const spent = (cur.spent ?? 0) + ship.cost;
-  owned.add(ship.id);
-  await setDoc(ref, {
-    uid,
-    userName,
-    perTest: cur.perTest ?? {},
-    testPoints,
-    asteroidsPoints: cur.asteroidsPoints ?? 0,
-    earned,
-    spent,
-    balance: earned - spent,
-    owned: [...owned],
-    equippedShip: ship.id, // fly it right away
-    updatedAt: serverTimestamp(),
+  await writePoints(uid, userName, (p) => {
+    if (ownedShipIds(p.owned).has(ship.id)) return false; // already owned
+    const earned = Object.values(p.perTest).reduce((a, b) => a + b, 0) + p.asteroidsPoints;
+    if (earned - p.spent < ship.cost) throw new Error("Not enough points for that ship.");
+    p.spent += ship.cost;
+    p.owned.push(ship.id);
+    p.equippedShip = ship.id; // fly it right away
   });
 }
 
-/** Equip an owned ship (or the free default). */
+/** Equip an owned ship (or the free default). Throws so the UI can report. */
 export async function equipShip(uid: string, userName: string, shipId: string): Promise<void> {
-  await _writePoints(uid, userName, (p) => {
-    if (shipId === DEFAULT_SHIP_ID || p.owned.includes(shipId)) p.equippedShip = shipId;
+  await writePoints(uid, userName, (p) => {
+    if (!ownedShipIds(p.owned).has(shipId)) return false;
+    p.equippedShip = shipId;
   });
 }
 
@@ -270,9 +263,13 @@ export async function awardTestPoints(
   scorePct: number,
 ): Promise<void> {
   const pts = Math.max(0, Math.round(scorePct));
-  await _writePoints(uid, userName, (p) => {
-    p.perTest[testId] = Math.max(p.perTest[testId] ?? 0, pts);
-  });
+  try {
+    await writePoints(uid, userName, (p) => {
+      p.perTest[testId] = Math.max(p.perTest[testId] ?? 0, pts);
+    });
+  } catch {
+    /* awards are a nice-to-have — never break the flow they hang off */
+  }
 }
 
 export async function awardAsteroidsPoints(
@@ -281,14 +278,23 @@ export async function awardAsteroidsPoints(
   bestScore: number,
 ): Promise<void> {
   const pts = Math.max(0, Math.floor(bestScore / 100));
-  await _writePoints(uid, userName, (p) => {
-    p.asteroidsPoints = Math.max(p.asteroidsPoints, pts);
-  });
+  try {
+    await writePoints(uid, userName, (p) => {
+      p.asteroidsPoints = Math.max(p.asteroidsPoints, pts);
+    });
+  } catch {
+    /* awards are a nice-to-have — never break the flow they hang off */
+  }
 }
 
-export async function getPoints(uid: string): Promise<KnowledgePoints | null> {
-  const snap = await getDoc(doc(db, POINTS, uid));
-  return snap.exists() ? (snap.data() as KnowledgePoints) : null;
+/* Live view of a user's wallet (null = no wallet yet / unreadable). One
+ * onSnapshot per subscriber; the SDK dedupes identical doc listens. */
+export function subscribePoints(uid: string, cb: (p: KnowledgePoints | null) => void): () => void {
+  return onSnapshot(
+    doc(db, POINTS, uid),
+    (snap) => cb(snap.exists() ? (snap.data() as KnowledgePoints) : null),
+    () => cb(null),
+  );
 }
 
 /* ── Asteroids leaderboard ───────────────────────────────────────────
@@ -314,11 +320,14 @@ export async function submitHighScore(args: {
       updatedAt: serverTimestamp(),
     };
     // `row` is the complete doc, so one setDoc covers both create and best-of
-    // update (the rules also enforce score-can-only-increase).
+    // update (the rules also enforce score-can-only-increase). A new personal
+    // best also tops up the arcade share of their points — independent writes,
+    // so run them in parallel.
     if (!snap.exists() || args.score > (snap.data().score ?? 0)) {
-      await setDoc(ref, row);
-      // A new personal best also tops up the arcade share of their points.
-      await awardAsteroidsPoints(args.uid, args.userName, args.score);
+      await Promise.all([
+        setDoc(ref, row),
+        awardAsteroidsPoints(args.uid, args.userName, args.score),
+      ]);
     }
   } catch {
     /* leaderboard is a nice-to-have — swallow failures */
@@ -402,18 +411,23 @@ export async function updateTest(
 export function attemptGate(
   test: Pick<KnowledgeTest, "retakePolicy" | "maxAttempts">,
   attempts: KnowledgeAttempt[]
-): { canTake: boolean; reason: "passed" | "single-used" | "out-of-attempts" | null } {
-  if (attempts.some((a) => a.passed)) return { canTake: false, reason: "passed" };
-  if (attempts.length === 0) return { canTake: true, reason: null };
+): { canTake: boolean; reason: "passed" | "single-used" | "out-of-attempts" | null; retakeable: boolean } {
+  // `retakeable` is the ONE place that decides which locks a voluntary retake
+  // (?retake=1) may override: only the "already passed" lock — a pass is
+  // sticky (attempts are append-only, points/leaderboard are best-of), so a
+  // practice retake is harmless under any policy. Admin caps (single-used /
+  // out-of-attempts) are never overridable.
+  if (attempts.some((a) => a.passed)) return { canTake: false, reason: "passed", retakeable: true };
+  if (attempts.length === 0) return { canTake: true, reason: null, retakeable: false };
   switch (test.retakePolicy) {
     case "single":
-      return { canTake: false, reason: "single-used" };
+      return { canTake: false, reason: "single-used", retakeable: false };
     case "untilPass":
-      return { canTake: true, reason: null };
+      return { canTake: true, reason: null, retakeable: false };
     case "limited":
       return attempts.length < test.maxAttempts
-        ? { canTake: true, reason: null }
-        : { canTake: false, reason: "out-of-attempts" };
+        ? { canTake: true, reason: null, retakeable: false }
+        : { canTake: false, reason: "out-of-attempts", retakeable: false };
   }
 }
 

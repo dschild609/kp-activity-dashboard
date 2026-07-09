@@ -7,6 +7,7 @@ import {
   roleLabel,
   type RosterUser,
 } from "../lib/roster";
+import { Chip } from "./ui";
 
 /* Assign a test to everyone, or any mix of roles / branches / specific
  * people. The union of all four is who's tracked for completion. */
@@ -201,30 +202,3 @@ export function AssignmentEditor({
   );
 }
 
-function Chip({
-  label,
-  active,
-  onClick,
-  mono,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  mono?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-2.5 py-1 rounded-lg border text-[12.5px] font-semibold transition-colors ${
-        mono ? "font-mono" : ""
-      } ${
-        active
-          ? "bg-kp-crimson-soft text-kp-crimson-soft-text border-kp-crimson-soft"
-          : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}

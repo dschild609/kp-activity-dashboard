@@ -102,7 +102,7 @@ const H = 560;
 // All game math runs in W×H logical space; the canvas buffer is rendered at
 // RENDER_SCALE× so it stays crisp when the (responsive) canvas fills a wide screen.
 const RENDER_SCALE = 2;
-const COLORS = { fg: "#e9f2ff", ship: "#eaf2ff", accent: "#ff3b5c", good: "#3ddc84", warn: "#ffcf5c", dim: "#5b6b7f" };
+const COLORS = { fg: "#e9f2ff", accent: "#ff3b5c", good: "#3ddc84", warn: "#ffcf5c", dim: "#5b6b7f" };
 
 // "Core Personnel" hostile flagship — carrier-class silhouette (normalized, nose
 // points up / -y), rendered as a neon double-stroke. Lifted from the boss spec.

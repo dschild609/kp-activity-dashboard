@@ -28,11 +28,11 @@ import {
   listTests,
   updateTest,
 } from "../lib/knowledge";
-import { subscribeTags, addTag, removeTag, subscribeTagPermissions, saveTagPermissions, type TagPermissions } from "../lib/tags";
+import { mergeTagVocabulary, subscribeTags, addTag, removeTag, subscribeTagPermissions, saveTagPermissions, type TagPermissions } from "../lib/tags";
 import { generateTestFromDoc } from "../lib/aiGenerate";
 import { MAX_TOTAL_PAGES, renderExhibit } from "../lib/exhibitPages";
 import { seedForkliftTest } from "../lib/seed";
-import { NoticeBox, Pill, SmallButton, Th } from "../components/ui";
+import { Chip, NoticeBox, Pill, SmallButton, TabPill, Th } from "../components/ui";
 import { DropZone } from "../components/DropZone";
 
 type Tab = "tests" | "assignments" | "permissions" | "results";
@@ -74,18 +74,7 @@ export function AdminPage() {
 
       <div className="flex gap-2 mb-8 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
         {visibleTabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`shrink-0 whitespace-nowrap rounded-lg border px-3.5 py-2 text-[13.5px] font-semibold transition-colors ${
-              activeTab === t.key
-                ? "bg-kp-navy text-white border-kp-navy"
-                : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
-            }`}
-          >
-            {t.label}
-          </button>
+          <TabPill key={t.key} label={t.label} active={activeTab === t.key} onClick={() => setTab(t.key)} />
         ))}
       </div>
 
@@ -199,13 +188,7 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
   useEffect(() => { getRoster().then(setRoster).catch(() => {}); }, []);
   useEffect(() => subscribeTags(setVocab), []);
 
-  // Vocabulary order first, then any legacy tag a test still carries, so every
-  // test stays reachable from the filter.
-  const allTags = useMemo(() => {
-    const used = new Set((tests ?? []).flatMap((t) => t.tags));
-    const extra = [...used].filter((t) => !vocab.includes(t)).sort();
-    return [...vocab, ...extra];
-  }, [tests, vocab]);
+  const allTags = useMemo(() => mergeTagVocabulary(vocab, tests ?? []), [tests, vocab]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -732,24 +715,14 @@ function PermissionsAdmin() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {ASSIGNABLE_ROLES.map((r) => {
-                    const on = roles.includes(r.id);
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => toggleRole(tag, r.id)}
-                        aria-pressed={on}
-                        className={`px-2.5 py-1 text-[12.5px] font-semibold rounded-lg border transition-colors ${
-                          on
-                            ? "bg-kp-crimson-soft text-kp-crimson-soft-text border-kp-crimson-soft"
-                            : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
-                        }`}
-                      >
-                        {r.label}
-                      </button>
-                    );
-                  })}
+                  {ASSIGNABLE_ROLES.map((r) => (
+                    <Chip
+                      key={r.id}
+                      label={r.label}
+                      active={roles.includes(r.id)}
+                      onClick={() => toggleRole(tag, r.id)}
+                    />
+                  ))}
                 </div>
               </div>
             );

@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import type { User } from "firebase/auth";
 import { useTheme } from "../hooks/useTheme";
-import { getPoints } from "../lib/knowledge";
+import { usePoints } from "../hooks/usePoints";
 
 interface NavFlags {
   canAdmin: boolean;
@@ -38,24 +37,10 @@ const TAB_INACTIVE = "font-medium text-white/70 hover:text-white hover:bg-white/
 
 export function TopNav({ user, canAdmin, canUseSopBuilder, onSignOut }: TopNavProps) {
   const { toggle, resolved } = useTheme();
-  const location = useLocation();
-  const [balance, setBalance] = useState<number | null>(null);
-
-  // The signed-in user's spendable points. Refetch on navigation so it
-  // reflects points just earned by finishing a test or an Asteroids run.
-  useEffect(() => {
-    if (!user) {
-      setBalance(null);
-      return;
-    }
-    let alive = true;
-    getPoints(user.uid)
-      .then((p) => alive && setBalance(p?.balance ?? 0))
-      .catch(() => alive && setBalance(null));
-    return () => {
-      alive = false;
-    };
-  }, [user, location.pathname]);
+  // Live wallet subscription — the badge updates the moment points are earned
+  // or spent, with no refetching on navigation.
+  const { points, loading } = usePoints(user);
+  const balance = user && !loading ? points?.balance ?? 0 : null;
 
   const visibleDestinations = NAV_DESTINATIONS.filter((d) =>
     d.visible({ canAdmin, canUseSopBuilder }),

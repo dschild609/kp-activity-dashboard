@@ -8,12 +8,13 @@ import {
   getTest,
   gradeAnswers,
   listAttempts,
-  getPoints,
   recordOpen,
   submitAttempt,
   submitHighScore,
+  userNameOf,
   type GradeResult,
 } from "../lib/knowledge";
+import { usePoints } from "../hooks/usePoints";
 import { DEFAULT_SHIP_ID } from "../lib/ships";
 import { SlideView, sectionNumberAt } from "../components/SlideView";
 import { VideoPlayer } from "../components/VideoPlayer";
@@ -77,15 +78,9 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
   const [state, setState] = useState<PageState>({ phase: "loading" });
   const [answers, setAnswers] = useState<Record<string, AnswerKey | null>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [shipId, setShipId] = useState(DEFAULT_SHIP_ID);
-
   // The pilot's equipped ship (bought in the Store) — flown in the arcade quiz.
-  useEffect(() => {
-    if (!user) return;
-    getPoints(user.uid)
-      .then((p) => setShipId(p?.equippedShip ?? DEFAULT_SHIP_ID))
-      .catch(() => {});
-  }, [user]);
+  const { points } = usePoints(user);
+  const shipId = points?.equippedShip ?? DEFAULT_SHIP_ID;
 
   useEffect(() => {
     if (!testId || !user) return;
@@ -119,9 +114,9 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
         }
         void recordOpen(testId, user.uid); // best-effort "opened" timestamp
         const gate = attemptGate(test, attempts);
-        // A voluntary retake overrides the "passed" lock (self-service practice);
-        // admin-controlled caps (single-used / out-of-attempts) still hold.
-        if (!gate.canTake && !(retake && gate.reason === "passed")) {
+        // A voluntary retake (?retake=1) may only override locks the gate marks
+        // retakeable — i.e. "already passed"; admin caps always hold.
+        if (!gate.canTake && !(retake && gate.retakeable)) {
           setState({ phase: "blocked", reason: gate.reason!, test });
           return;
         }
@@ -152,7 +147,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
       if (!preview) {
         await submitAttempt({
           uid: user.uid,
-          userName: user.displayName ?? user.email ?? "Unknown",
+          userName: userNameOf(user),
           userEmail: user.email ?? "",
           test: state.test,
           result,
@@ -246,7 +241,7 @@ export function TakeTestPage({ preview = false }: { preview?: boolean }) {
           if (!preview && user) {
             submitHighScore({
               uid: user.uid,
-              userName: user.displayName ?? user.email ?? "Unknown",
+              userName: userNameOf(user),
               score,
               test: gstate.test,
             });

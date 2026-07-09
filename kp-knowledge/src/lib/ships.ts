@@ -15,8 +15,6 @@ export interface Ship {
   paths: Array<Array<[number, number]>>; // normalized, nose toward -y
 }
 
-export const DEFAULT_SHIP_ID = "arrowhead";
-
 const SCALE = 15; // normalized hull → pixels
 
 export const SHIPS: Ship[] = [
@@ -82,8 +80,16 @@ export const SHIPS: Ship[] = [
   },
 ];
 
+/* The free starter hull — first in the catalog, always owned. */
+export const DEFAULT_SHIP_ID = SHIPS[0].id;
+
 export function getShip(id: string | undefined): Ship {
   return SHIPS.find((s) => s.id === id) ?? SHIPS[0];
+}
+
+/** Every ship id a wallet can fly: the free default plus its purchases. */
+export function ownedShipIds(owned: string[] | undefined): Set<string> {
+  return new Set([DEFAULT_SHIP_ID, ...(owned ?? [])]);
 }
 
 /** Draw a ship's hull. Assumes the context is already translated to the ship's
@@ -97,18 +103,21 @@ export function drawShipHull(ctx: CanvasRenderingContext2D, id: string | undefin
   ctx.shadowColor = s.color;
   ctx.strokeStyle = s.color;
   ctx.lineWidth = 1.8;
+  // All sub-paths accumulate into ONE path stroked once — a shadowed stroke is
+  // the most expensive canvas primitive, and this runs per frame in the game.
+  ctx.beginPath();
   for (const path of s.paths) {
-    ctx.beginPath();
-    path.forEach(([hx, hy], i) => {
+    for (let i = 0; i < path.length; i++) {
       // normalized nose-up (nose at -y) → game space (nose at +x)
-      const x = -hy * SCALE;
-      const y = hx * SCALE;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
+      const x = -path[i][1] * SCALE;
+      const y = path[i][0] * SCALE;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
     ctx.closePath();
-    ctx.shadowBlur = 9;
-    ctx.stroke();
   }
+  ctx.shadowBlur = 9;
+  ctx.stroke();
   ctx.shadowBlur = 0;
   ctx.restore();
 }

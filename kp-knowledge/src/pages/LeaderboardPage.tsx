@@ -3,7 +3,7 @@ import { useOutletContext, useSearchParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgeLeaderboardEntry } from "../types/knowledge";
 import { listLeaderboard } from "../lib/knowledge";
-import { NoticeBox, Th } from "../components/ui";
+import { NoticeBox, TabPill, Th } from "../components/ui";
 import { StoreSection } from "./StoreSection";
 import { HangarSection } from "./HangarSection";
 
@@ -27,18 +27,12 @@ export function LeaderboardPage() {
           { key: "store", label: "🛒 Store" },
           { key: "hangar", label: "🚀 The Hangar" },
         ] as const).map((t) => (
-          <button
+          <TabPill
             key={t.key}
-            type="button"
+            label={t.label}
+            active={tab === t.key}
             onClick={() => setParams(t.key === "board" ? {} : { tab: t.key }, { replace: true })}
-            className={`rounded-lg border px-3.5 py-2 text-[13.5px] font-semibold transition-colors ${
-              tab === t.key
-                ? "bg-kp-navy text-white border-kp-navy"
-                : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
-            }`}
-          >
-            {t.label}
-          </button>
+          />
         ))}
       </div>
 

@@ -39,6 +39,16 @@ export async function removeTag(name: string): Promise<void> {
   await setDoc(tagsRef(), { tags: arrayRemove(name) }, { merge: true });
 }
 
+/* Filterable tag list for a set of tests: the managed vocabulary (in admin
+ * order) first, then any legacy tag a test still carries (sorted), so every
+ * test stays reachable even after its tag is removed from the vocabulary.
+ * Shared by the Tests page filter chips and the admin tag dropdown. */
+export function mergeTagVocabulary(vocab: string[], tests: Array<{ tags: string[] }>): string[] {
+  const used = new Set(tests.flatMap((t) => t.tags));
+  const extra = [...used].filter((t) => !vocab.includes(t)).sort();
+  return [...vocab, ...extra];
+}
+
 /* ── Library visibility by role (per-tag) ─────────────────────────────
  * Maps a tag → the role ids allowed to see its tests in the Library. A tag
  * that's absent (or maps to an empty list) is open to everyone — so existing

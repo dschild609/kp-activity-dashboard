@@ -34,10 +34,6 @@ export function ShipPreview({
     ctx.restore();
   }, [shipId, width, height, zoom]);
   return (
-    <canvas
-      ref={ref}
-      style={{ width, height }}
-      className="rounded-lg bg-[#0b1220] w-full"
-    />
+    <canvas ref={ref} style={{ width, height }} className="rounded-lg" />
   );
 }

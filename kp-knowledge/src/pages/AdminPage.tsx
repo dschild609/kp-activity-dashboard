@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import {
@@ -11,7 +11,7 @@ import {
   type KnowledgeQuestion,
   type KnowledgeTest,
 } from "../types/knowledge";
-import { daysUntil, formatDue, getRoster, resolveAssigned, roleLabel, type RosterUser } from "../lib/roster";
+import { ASSIGNABLE_ROLES, daysUntil, formatDue, getRoster, resolveAssigned, roleLabel, type RosterUser } from "../lib/roster";
 import { AssignmentEditor } from "../components/AssignmentEditor";
 import {
   previewReminders,
@@ -28,14 +28,14 @@ import {
   listTests,
   updateTest,
 } from "../lib/knowledge";
-import { subscribeTags, addTag, removeTag } from "../lib/tags";
+import { subscribeTags, addTag, removeTag, subscribeTagPermissions, saveTagPermissions, type TagPermissions } from "../lib/tags";
 import { generateTestFromDoc } from "../lib/aiGenerate";
 import { MAX_TOTAL_PAGES, renderExhibit } from "../lib/exhibitPages";
 import { seedForkliftTest } from "../lib/seed";
 import { NoticeBox, Pill, SmallButton, Th } from "../components/ui";
 import { DropZone } from "../components/DropZone";
 
-type Tab = "tests" | "assignments" | "results";
+type Tab = "tests" | "assignments" | "permissions" | "results";
 
 export function AdminPage() {
   const authed = useOutletContext<AuthState>();
@@ -55,6 +55,7 @@ export function AdminPage() {
   const tabs: Array<{ key: Tab; label: string; show: boolean }> = [
     { key: "tests", label: "Tests", show: manage },
     { key: "assignments", label: "Assignments", show: manage },
+    { key: "permissions", label: "Permissions", show: manage },
     { key: "results", label: "Results", show: viewResults },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
@@ -90,6 +91,7 @@ export function AdminPage() {
 
       {activeTab === "tests" && <TestsAdmin authed={authed} />}
       {activeTab === "assignments" && <AssignmentsAdmin />}
+      {activeTab === "permissions" && <PermissionsAdmin />}
       {activeTab === "results" && <ResultsAdmin />}
     </main>
   );
@@ -580,6 +582,117 @@ function FileRow({
         >
           ✕
         </button>
+      )}
+    </div>
+  );
+}
+
+/* ── Permissions tab ─────────────────────────────────────────────────
+ * Per-tag Library visibility: pick which roles can see each tag's tests.
+ * A tag with no roles selected stays open to everyone. */
+function PermissionsAdmin() {
+  const [vocab, setVocab] = useState<string[] | null>(null);
+  const [perms, setPerms] = useState<TagPermissions>({});
+  const [err, setErr] = useState<string | null>(null);
+  // Latest perms for the click handlers, so rapid toggles build on each other
+  // instead of a stale render closure.
+  const permsRef = useRef<TagPermissions>({});
+
+  useEffect(() => subscribeTags(setVocab), []);
+  useEffect(
+    () => subscribeTagPermissions((p) => { permsRef.current = p; setPerms(p); }),
+    []
+  );
+
+  function commit(next: TagPermissions) {
+    permsRef.current = next;
+    setPerms(next); // optimistic — the subscription reconciles
+    setErr(null);
+    saveTagPermissions(next).catch((e) => setErr((e as Error).message));
+  }
+  function toggleRole(tag: string, roleId: string) {
+    const cur = permsRef.current[tag] ?? [];
+    const roles = cur.includes(roleId) ? cur.filter((r) => r !== roleId) : [...cur, roleId];
+    const next = { ...permsRef.current };
+    if (roles.length === 0) delete next[tag];
+    else next[tag] = roles;
+    commit(next);
+  }
+  function openToEveryone(tag: string) {
+    const next = { ...permsRef.current };
+    delete next[tag];
+    commit(next);
+  }
+
+  return (
+    <div>
+      <h2 className="kp-kicker mb-4">Library Permissions</h2>
+      <p className="text-[13px] text-kp-text-muted mb-4 max-w-2xl">
+        Choose which roles can see each tag's tests in the <b>Library</b>. Tags left open are visible to
+        everyone, and admins always see every test. Assigned tests still appear for whoever they're
+        assigned to, regardless of these settings.
+      </p>
+      {err && <NoticeBox tone="bad" className="mb-4">{err}</NoticeBox>}
+      {vocab === null ? (
+        <div className="text-[13px] text-kp-text-faint">Loading…</div>
+      ) : vocab.length === 0 ? (
+        <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-6 text-center text-[13.5px] text-kp-text-muted">
+          No tags yet — add tags on the Tests tab first, then set who can see them here.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {vocab.map((tag) => {
+            const roles = perms[tag] ?? [];
+            const open = roles.length === 0;
+            return (
+              <div key={tag} className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[14px] font-bold text-kp-text">{tag}</span>
+                    <span
+                      className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                        open
+                          ? "bg-kp-good-bg text-kp-good border-kp-good-border"
+                          : "bg-kp-surface-alt text-kp-text-muted border-kp-border"
+                      }`}
+                    >
+                      {open ? "Everyone" : `${roles.length} role${roles.length === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                  {!open && (
+                    <button
+                      type="button"
+                      onClick={() => openToEveryone(tag)}
+                      className="shrink-0 text-[12px] font-semibold text-kp-text-muted hover:text-kp-navy"
+                    >
+                      Reset to everyone
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {ASSIGNABLE_ROLES.map((r) => {
+                    const on = roles.includes(r.id);
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => toggleRole(tag, r.id)}
+                        aria-pressed={on}
+                        className={`px-2.5 py-1 text-[12.5px] font-semibold rounded-lg border transition-colors ${
+                          on
+                            ? "bg-kp-crimson-soft text-kp-crimson-soft-text border-kp-crimson-soft"
+                            : "bg-kp-surface text-kp-text-muted border-kp-border hover:border-kp-border-strong"
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

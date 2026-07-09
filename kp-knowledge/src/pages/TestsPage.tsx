@@ -3,8 +3,8 @@ import { Link, useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { Assignment, KnowledgeAttempt, KnowledgeTest } from "../types/knowledge";
 import { attemptGate, listAttempts, listTests } from "../lib/knowledge";
-import { assignmentMatchesUser, daysUntil, formatDue } from "../lib/roster";
-import { subscribeTags } from "../lib/tags";
+import { assignmentMatchesUser, daysUntil, formatDue, normalizeRole } from "../lib/roster";
+import { subscribeTags, subscribeTagPermissions, testVisibleForRole, type TagPermissions } from "../lib/tags";
 import { Pill } from "../components/ui";
 
 type TabKey = "assigned" | "library";
@@ -23,7 +23,7 @@ const SORTS: Record<SortKey, { label: string; cmp: (a: KnowledgeTest, b: Knowled
 };
 
 export function TestsPage() {
-  const { user, role, branch } = useOutletContext<AuthState>();
+  const { user, role, branch, canManage } = useOutletContext<AuthState>();
   const [tests, setTests] = useState<KnowledgeTest[] | null>(null);
   const [attempts, setAttempts] = useState<KnowledgeAttempt[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +31,7 @@ export function TestsPage() {
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("name");
   const [vocab, setVocab] = useState<string[]>([]);
+  const [tagPerms, setTagPerms] = useState<TagPermissions>({});
 
   useEffect(() => {
     if (!user) return;
@@ -42,6 +43,8 @@ export function TestsPage() {
   // The managed tag vocabulary drives the filter chips, so a new tag shows
   // up here even before any test uses it.
   useEffect(() => subscribeTags(setVocab), []);
+  // Per-tag role visibility scopes the Library (set on the admin Permissions tab).
+  useEffect(() => subscribeTagPermissions(setTagPerms), []);
 
   const attemptsByTest = useMemo(() => {
     const map = new Map<string, KnowledgeAttempt[]>();
@@ -88,13 +91,15 @@ export function TestsPage() {
 
   const assignedOutstanding = assignedTests.filter((t) => !bestOf(t)?.passed).length;
 
-  const libraryTests = useMemo(
-    () =>
-      (tests ?? [])
-        .filter((t) => !tagFilter || t.tags.includes(tagFilter))
-        .sort(SORTS[sort].cmp),
-    [tests, tagFilter, sort]
-  );
+  // Library = every active test, minus any whose tags aren't visible to this
+  // user's role (managers see all), then the chip filter + sort.
+  const libraryTests = useMemo(() => {
+    const myRole = normalizeRole(role);
+    return (tests ?? [])
+      .filter((t) => canManage || testVisibleForRole(tagPerms, t.tags, myRole))
+      .filter((t) => !tagFilter || t.tags.includes(tagFilter))
+      .sort(SORTS[sort].cmp);
+  }, [tests, tagFilter, sort, tagPerms, role, canManage]);
 
   const shown = tab === "assigned" ? assignedTests : libraryTests;
 

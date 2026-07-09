@@ -106,5 +106,5 @@ export function roleLabel(id: string | null): string {
 /* KP branch codes (CORP = corporate). */
 export const BRANCHES = [
   "ARL", "ATL", "CARR", "CORP", "DENT", "DUNC", "FORT", "GARL", "GRAN",
-  "HNC", "HOU", "IRV", "KC", "MEM", "NHOU", "PAS", "PHX", "SAG",
+  "HNC", "HOU", "IRV", "KC", "MEM", "NATX", "NHOU", "PAS", "PHX", "SAG",
 ] as const;

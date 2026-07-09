@@ -233,6 +233,20 @@
       ],
       "cwd": "/Users/davidschild/Claude Code/kp-client-dashboard",
       "port": 5180
+    },
+    {
+      "name": "kp-sop-recorder-web",
+      "runtimeExecutable": "/opt/homebrew/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5197",
+        "--strictPort"
+      ],
+      "cwd": "/Users/davidschild/Claude Code/kp-sop-recorder/web",
+      "port": 5197
     }
   ]
 }

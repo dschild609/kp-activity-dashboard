@@ -1,4 +1,6 @@
 from presto import Presto
+import network
+import urequests
 import gc
 import time
 
@@ -14,46 +16,26 @@ BLUE       = display.create_pen(37, 99, 235)
 RED        = display.create_pen(220, 38, 38)
 ORANGE     = display.create_pen(217, 119, 6)
 
-# Theme-dependent colors — set by apply_theme()
-BG = TEXT = GRAY = LIGHT_GRAY = BAR_BG = None
-FILL_BLUE = FILL_GREEN = DOT_ACTIVE = DOT_INACTIVE = None
-BANNER_TEXT = None
+# Dark mode colors
+BG           = display.create_pen(20, 20, 24)
+TEXT         = display.create_pen(235, 235, 230)
+GRAY         = display.create_pen(150, 150, 150)
+LIGHT_GRAY   = display.create_pen(60, 60, 64)
+BAR_BG       = display.create_pen(50, 50, 54)
+FILL_BLUE    = display.create_pen(30, 40, 70)
+FILL_GREEN   = display.create_pen(25, 50, 35)
+DOT_ACTIVE   = display.create_pen(220, 220, 215)
+DOT_INACTIVE = display.create_pen(70, 70, 74)
+BANNER_TEXT  = display.create_pen(235, 235, 230)
 
 THICK = 2
-NUM_PAGES = 2
+NUM_PAGES = 5
 current_page = 0
-dark_mode = False
 
-def apply_theme():
-    global BG, TEXT, GRAY, LIGHT_GRAY, BAR_BG
-    global FILL_BLUE, FILL_GREEN, DOT_ACTIVE, DOT_INACTIVE, BANNER_TEXT
-    if dark_mode:
-        BG           = display.create_pen(20, 20, 24)
-        TEXT         = display.create_pen(235, 235, 230)
-        GRAY         = display.create_pen(150, 150, 150)
-        LIGHT_GRAY   = display.create_pen(60, 60, 64)
-        BAR_BG       = display.create_pen(50, 50, 54)
-        FILL_BLUE    = display.create_pen(30, 40, 70)
-        FILL_GREEN   = display.create_pen(25, 50, 35)
-        DOT_ACTIVE   = display.create_pen(220, 220, 215)
-        DOT_INACTIVE = display.create_pen(70, 70, 74)
-        BANNER_TEXT  = display.create_pen(235, 235, 230)
-    else:
-        BG           = display.create_pen(240, 240, 236)
-        TEXT         = display.create_pen(20, 20, 20)
-        GRAY         = display.create_pen(140, 140, 140)
-        LIGHT_GRAY   = display.create_pen(210, 210, 206)
-        BAR_BG       = display.create_pen(225, 225, 220)
-        FILL_BLUE    = display.create_pen(220, 230, 250)
-        FILL_GREEN   = display.create_pen(220, 245, 230)
-        DOT_ACTIVE   = display.create_pen(80, 80, 80)
-        DOT_INACTIVE = display.create_pen(190, 190, 186)
-        BANNER_TEXT  = display.create_pen(245, 245, 240)
-
-apply_theme()
-
-def fmt_money(v):
+def fmt_money(v, short=False):
     if v >= 1_000_000:
+        if short:
+            return "${:.1f}M".format(v / 1_000_000)
         return "${:.2f}M".format(v / 1_000_000)
     if v >= 1_000:
         return "${:.0f}K".format(v / 1_000)
@@ -143,8 +125,22 @@ def draw_banner():
     display.set_pen(BANNER_TEXT)
     set_label()
     display.text("KP STAFFING", 6, 4, WIDTH, 1)
-    display.set_pen(GREEN)
+    wlan = network.WLAN(network.STA_IF)
+    display.set_pen(GREEN if wlan.isconnected() else RED)
     display.circle(WIDTH - 10, 8, 3)
+
+
+def show_status(msg, color=None):
+    display.set_pen(BG)
+    display.clear()
+    draw_banner()
+    display.set_pen(color or TEXT)
+    set_label()
+    y = 60
+    for line in msg if isinstance(msg, list) else [msg]:
+        display.text(str(line), 12, y, WIDTH - 24, 2)
+        y += 28
+    presto.update()
 
 def draw_gp_page(stats):
     display.set_pen(BG)
@@ -187,28 +183,31 @@ def draw_gp_page(stats):
 
     display.set_pen(GRAY)
     set_label()
-    display.text("ACHIEVED", 8, 92, mid, 1)
+    display.text("ACHIEVED", 8, 90, mid, 1)
     display.set_pen(gc_color)
-    display.text("{:.1f}%".format(pct), 8, 102, mid, 3)
+    set_sans(THICK)
+    display.text("{:.1f}%".format(pct), 8, 114, mid, 1)
     display.set_pen(GRAY)
-    display.text(fmt_money(goal - ytd) + " left", 8, 126, mid, 1)
+    set_label()
+    display.text(fmt_money(goal - ytd, True) + " left", 8, 136, mid, 1)
 
     display.set_pen(LIGHT_GRAY)
-    display.line(mid, 92, mid, 134)
+    display.line(mid, 90, mid, 144)
 
     display.set_pen(GRAY)
     set_label()
-    display.text("PROJECTED EOY", mid + 6, 92, mid - 6, 1)
+    display.text("PROJECTED EOY", mid + 6, 90, mid - 6, 1)
     display.set_pen(pace_color)
-    display.text(fmt_money(projected), mid + 6, 102, mid - 6, 3)
+    set_sans(THICK)
+    display.text(fmt_money(projected, True), mid + 6, 114, mid - 6, 1)
 
     # Sparkline
     display.set_pen(LIGHT_GRAY)
-    display.line(8, 140, WIDTH - 8, 140)
+    display.line(8, 150, WIDTH - 8, 150)
     display.set_pen(GRAY)
     set_label()
-    display.text("Last Week's Gross Profit", 8, 144, WIDTH, 1)
-    draw_sparkline(sparkline, 8, 158, WIDTH - 16, 44, BLUE, FILL_BLUE)
+    display.text("Last Week's Gross Profit", 8, 154, WIDTH, 1)
+    draw_sparkline(sparkline, 8, 168, WIDTH - 16, 36, BLUE, FILL_BLUE)
 
     # Page dots + timestamp
     draw_page_dots(0)
@@ -281,49 +280,263 @@ def draw_sales_page(stats):
 
     presto.update()
 
+def draw_hc_page(stats):
+    display.set_pen(BG)
+    display.clear()
+    draw_banner()
+
+    current_hc = stats["current_hc"]
+    prior_hc = stats.get("prior_year_hc", 0)
+    yoy_change = stats.get("yoy_change", current_hc - prior_hc)
+    yoy_pct = stats.get("yoy_pct", 0)
+    hc_sparkline = stats["hc_sparkline"]
+    latest_iso = stats["latest_week_iso"]
+
+    change_color = GREEN if yoy_change >= 0 else RED
+
+    # Label
+    display.set_pen(GRAY)
+    set_label()
+    display.text("COMPANY HEADCOUNT", 8, 20, WIDTH, 1)
+
+    # Hero — current HC
+    display.set_pen(TEXT)
+    set_sans(THICK)
+    display.text(str(current_hc), 8, 46, WIDTH, 1)
+
+    display.set_pen(GRAY)
+    set_label()
+    display.text("workers on assignment", 8, 70, WIDTH, 1)
+
+    # Green accent line
+    display.set_pen(GREEN)
+    display.rectangle(8, 80, WIDTH - 16, 3)
+
+    # YoY Growth section
+    mid = WIDTH // 2
+
+    display.set_pen(GRAY)
+    set_label()
+    display.text("YOY GROWTH", 8, 90, mid, 1)
+
+    display.set_pen(change_color)
+    set_sans(THICK)
+    arrow = "+" if yoy_change >= 0 else ""
+    display.text(arrow + str(yoy_change), 8, 114, mid, 1)
+
+    display.set_pen(GRAY)
+    set_label()
+    display.text("vs " + str(prior_hc) + " in 2025", 8, 136, mid, 1)
+
+    display.set_pen(LIGHT_GRAY)
+    display.line(mid, 90, mid, 144)
+
+    display.set_pen(GRAY)
+    set_label()
+    display.text("GROWTH RATE", mid + 6, 90, mid - 6, 1)
+
+    display.set_pen(change_color)
+    set_sans(THICK)
+    pct_arrow = "+" if yoy_pct >= 0 else ""
+    display.text("{}{:.0f}%".format(pct_arrow, yoy_pct), mid + 6, 114, mid - 6, 1)
+
+    display.set_pen(GRAY)
+    set_label()
+    display.text("same week last yr", mid + 6, 136, mid - 6, 1)
+
+    # Sparkline
+    display.set_pen(LIGHT_GRAY)
+    display.line(8, 150, WIDTH - 8, 150)
+    display.set_pen(GRAY)
+    set_label()
+    display.text("Weekly Headcount", 8, 154, WIDTH, 1)
+    draw_sparkline(hc_sparkline, 8, 168, WIDTH - 16, 36, GREEN, FILL_GREEN)
+
+    # Page dots + timestamp
+    draw_page_dots(2)
+    display.set_pen(GRAY)
+    set_label()
+    ts = stats["updated_at"][:16].replace("T", " ")
+    ts_w = display.measure_text(ts, 1)
+    display.text(ts, WIDTH - ts_w - 8, 232, WIDTH, 1)
+
+    presto.update()
+
+def draw_sales_leaders_page(stats):
+    display.set_pen(BG)
+    display.clear()
+    draw_banner()
+
+    reps = stats.get("top_sales", [])
+
+    # Label
+    display.set_pen(GRAY)
+    set_label()
+    display.text("TOP SALES REPS", 8, 20, WIDTH, 1)
+
+    # Accent line
+    display.set_pen(CRIMSON)
+    display.rectangle(8, 30, WIDTH - 16, 3)
+
+    rank_colors = [GREEN, BLUE, BLUE]
+
+    for i, rep in enumerate(reps[:3]):
+        y = 36 + i * 62
+
+        # Rank + Name
+        display.set_pen(TEXT)
+        set_label()
+        display.text("{}  {}".format(i + 1, rep["name"]), 8, y, WIDTH - 16, 1)
+
+        # HC number (sans) — 24px below name for sans clearance
+        display.set_pen(rank_colors[i])
+        set_sans(THICK)
+        hc_text = str(rep["headcount"])
+        hc_w = display.measure_text(hc_text, 1)
+        display.text(hc_text, 8, y + 24, WIDTH, 1)
+
+        # YTD GP (bitmap8, beside HC)
+        display.set_pen(GRAY)
+        set_label()
+        display.text(fmt_money(rep["ytd_gp"]) + " YTD GP", hc_w + 16, y + 30, WIDTH, 1)
+
+    # Page dots + timestamp
+    draw_page_dots(3)
+    display.set_pen(GRAY)
+    set_label()
+    ts = stats["updated_at"][:16].replace("T", " ")
+    ts_w = display.measure_text(ts, 1)
+    display.text(ts, WIDTH - ts_w - 8, 232, WIDTH, 1)
+
+    presto.update()
+
+
+def draw_recruiter_page(stats):
+    display.set_pen(BG)
+    display.clear()
+    draw_banner()
+
+    recruiters = stats.get("top_recruiters", [])
+
+    # Label
+    display.set_pen(GRAY)
+    set_label()
+    display.text("TOP RECRUITERS", 8, 20, WIDTH, 1)
+
+    # Accent line
+    display.set_pen(BLUE)
+    display.rectangle(8, 30, WIDTH - 16, 3)
+
+    rank_colors = [GREEN, BLUE, BLUE]
+
+    for i, rec in enumerate(recruiters[:3]):
+        y = 36 + i * 62
+
+        # Rank + Name
+        display.set_pen(TEXT)
+        set_label()
+        display.text("{}  {}".format(i + 1, rec["name"]), 8, y, WIDTH - 16, 1)
+
+        # HC number (sans) — 24px below name for sans clearance
+        display.set_pen(rank_colors[i])
+        set_sans(THICK)
+        hc_text = str(rec["headcount"])
+        hc_w = display.measure_text(hc_text, 1)
+        display.text(hc_text, 8, y + 24, WIDTH, 1)
+
+        # Avg weekly (bitmap8, beside HC)
+        display.set_pen(GRAY)
+        set_label()
+        display.text("avg {}/wk".format(rec["avg_weekly"]), hc_w + 16, y + 30, WIDTH, 1)
+
+    # Page dots + timestamp
+    draw_page_dots(4)
+    display.set_pen(GRAY)
+    set_label()
+    ts = stats["updated_at"][:16].replace("T", " ")
+    ts_w = display.measure_text(ts, 1)
+    display.text(ts, WIDTH - ts_w - 8, 232, WIDTH, 1)
+
+    presto.update()
+
+
 def draw_page(stats, page):
     if page == 0:
         draw_gp_page(stats)
-    else:
+    elif page == 1:
         draw_sales_page(stats)
+    elif page == 2:
+        draw_hc_page(stats)
+    elif page == 3:
+        draw_sales_leaders_page(stats)
+    else:
+        draw_recruiter_page(stats)
 
-# ── Mock data ────────────────────────────────────────────
-stats = {
-    "ytd_gp": 8718622,
-    "annual_goal": 20587114,
-    "pct_achieved": 42.3,
-    "projected_eoy": 24570381,
-    "pace_gap": 3983267,
-    "on_pace": True,
-    "weeks_remaining": 31,
-    "latest_week_gp": 525351,
-    "latest_week_iso": "2026-05-17",
-    "sparkline": [263807,350596,373399,343577,313844,409895,468423,
-                  411132,422974,400297,403940,423990,443147,424927,
-                  478131,477755,496247,512681,511110,525351],
-    "ytd_rev": 49820113,
-    "rev_projected": 139267273,
-    "latest_week_rev": 3023321,
-    "rev_sparkline": [1453927,1919628,2098422,1946788,1826432,2318561,
-                      2555834,2295327,2413289,2264780,2339720,2502397,
-                      2636101,2442869,2762994,2809948,2829106,2888102,
-                      3023321,3023321],
-    "updated_at": "2026-05-23T17:49:38",
-}
-
-# LEDs
-for i in range(7):
-    presto.set_led_rgb(i, 0, 40, 0)
-
-# Draw initial page
-draw_page(stats, current_page)
-
-# ── Touch/swipe loop ─────────────────────────────────────
+# ── Config ────────────────────────────────────────────────
+STATS_URL = "https://kp-presto-middleware.onrender.com/kp-stats.json"
+REFRESH_SECONDS = 3600
 SWIPE_THRESHOLD = 30
-TAP_THRESHOLD = 15
+AUTO_ROTATE_MS = 10000
+
+
+def fetch_stats():
+    gc.collect()
+    r = urequests.get(STATS_URL)
+    data = r.json()
+    r.close()
+    gc.collect()
+    return data
+
+
+def set_leds(on_pace):
+    for i in range(7):
+        presto.set_led_rgb(i, 0, 0, 0)
+
+
+# ── Startup ───────────────────────────────────────────────
+show_status("Connecting WiFi...")
+presto.connect()
+
+wlan = network.WLAN(network.STA_IF)
+if not wlan.isconnected():
+    show_status(["WiFi failed!", "Check secrets.py"], RED)
+    time.sleep(30)
+    import machine
+    machine.reset()
+
+show_status(["Connected!", wlan.ifconfig()[0]], GREEN)
+time.sleep(1)
+
+# First fetch
+stats = None
+show_status("Fetching data...")
+try:
+    stats = fetch_stats()
+    set_leds(stats.get("on_pace", True))
+except Exception as e:
+    show_status(["Fetch error", str(e)[:30]], RED)
+    time.sleep(10)
+
+if stats:
+    draw_page(stats, current_page)
+
+# ── Main loop ────────────────────────────────────────────
+last_fetch = time.time()
+last_switch = time.ticks_ms()
 touch_start_x = None
 
 while True:
+    # Periodic data refresh
+    if time.time() - last_fetch >= REFRESH_SECONDS:
+        try:
+            stats = fetch_stats()
+            set_leds(stats.get("on_pace", True))
+            last_fetch = time.time()
+            draw_page(stats, current_page)
+        except Exception:
+            last_fetch = time.time() - REFRESH_SECONDS + 60
+
+    # Touch handling
     touch.poll()
 
     if touch.state == touch.STATE_DOWN:
@@ -333,15 +546,20 @@ while True:
         dx = touch.x - touch_start_x
         touch_start_x = None
 
-        if dx < -SWIPE_THRESHOLD and current_page < NUM_PAGES - 1:
-            current_page += 1
-            draw_page(stats, current_page)
-        elif dx > SWIPE_THRESHOLD and current_page > 0:
-            current_page -= 1
-            draw_page(stats, current_page)
-        elif abs(dx) < TAP_THRESHOLD:
-            dark_mode = not dark_mode
-            apply_theme()
-            draw_page(stats, current_page)
+        if stats:
+            if dx < -SWIPE_THRESHOLD and current_page < NUM_PAGES - 1:
+                current_page += 1
+                draw_page(stats, current_page)
+                last_switch = time.ticks_ms()
+            elif dx > SWIPE_THRESHOLD and current_page > 0:
+                current_page -= 1
+                draw_page(stats, current_page)
+                last_switch = time.ticks_ms()
+
+    # Auto-rotate
+    if stats and time.ticks_diff(time.ticks_ms(), last_switch) >= AUTO_ROTATE_MS:
+        current_page = (current_page + 1) % NUM_PAGES
+        draw_page(stats, current_page)
+        last_switch = time.ticks_ms()
 
     time.sleep(0.05)

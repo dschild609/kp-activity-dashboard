@@ -366,7 +366,7 @@ function BulletsSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }
               <ul className="space-y-2.5">
                 {col.bullets.map((b, i) => (
                   <li key={i} className="group/row flex gap-2.5 text-[14px] leading-snug" style={{ color: MUTED }}>
-                    <span className="font-bold shrink-0" style={{ color: CRIMSON }}>—</span>
+                    <span className="shrink-0 text-[16px] leading-snug" style={{ color: CRIMSON }}>•</span>
                     <span className="flex-1">
                       {edit ? (
                         <Txt value={b} placeholder="Lead — description" onCommit={(v) => setCol({ ...col, bullets: col.bullets.map((x, j) => (j === i ? v : x)) })} />

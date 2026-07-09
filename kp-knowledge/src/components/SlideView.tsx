@@ -564,19 +564,6 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
       )}
     </>
   );
-  // Source caption (e.g. "fw4.pdf — page 1 (detail)") is an editor-only
-  // reference — hidden from employees and the preview so trainees never see
-  // raw filenames. Only rendered when editing.
-  const label = (compact: boolean) =>
-    edit && slide.imageLabel && (
-      <div
-        className={`${compact ? "mt-2.5" : "mt-5"} font-mono uppercase`}
-        style={{ fontSize: compact ? 10 : 10.5, letterSpacing: "0.12em", color: "#98a1a8" }}
-      >
-        {slide.imageLabel}
-      </div>
-    );
-
   if (imageTop) {
     // Horizontal variant: screenshot across the top, lower-third text band —
     // best for wide crops (a form row, a signature line, a table header).
@@ -584,10 +571,7 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
       <div className="absolute inset-0 grid" style={{ gridTemplateRows: "58% 42%" }}>
         {imagePane}
         <div className="px-10 py-5 grid gap-8 overflow-y-auto" style={{ gridTemplateColumns: "38% 1fr" }}>
-          <div>
-            {heading(true)}
-            {label(true)}
-          </div>
+          <div>{heading(true)}</div>
           <div className="flex flex-col justify-center">{bodyAndNote(true)}</div>
         </div>
       </div>
@@ -597,7 +581,6 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
     <div className="px-9 py-9 flex flex-col justify-center overflow-y-auto">
       {heading(false)}
       {bodyAndNote(false)}
-      {label(false)}
     </div>
   );
   return (

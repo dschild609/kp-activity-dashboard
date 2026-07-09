@@ -187,6 +187,9 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
   const [busy, setBusy] = useState(false);
   const [roster, setRoster] = useState<RosterUser[]>([]);
   const [assigning, setAssigning] = useState<KnowledgeTest | null>(null);
+  const [search, setSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [vocab, setVocab] = useState<string[]>([]);
 
   const reload = useCallback(() => {
     listTests({ activeOnly: false }).then(setTests).catch((e) => setError((e as Error).message));
@@ -194,6 +197,22 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
   useEffect(reload, [reload]);
   // Roster feeds the ad-hoc assignment picker (loaded once, reused per test).
   useEffect(() => { getRoster().then(setRoster).catch(() => {}); }, []);
+  useEffect(() => subscribeTags(setVocab), []);
+
+  // Vocabulary order first, then any legacy tag a test still carries, so every
+  // test stays reachable from the filter.
+  const allTags = useMemo(() => {
+    const used = new Set((tests ?? []).flatMap((t) => t.tags));
+    const extra = [...used].filter((t) => !vocab.includes(t)).sort();
+    return [...vocab, ...extra];
+  }, [tests, vocab]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (tests ?? []).filter(
+      (t) => (!q || t.name.toLowerCase().includes(q)) && (!tagFilter || t.tags.includes(tagFilter)),
+    );
+  }, [tests, search, tagFilter]);
 
   async function handleSeed() {
     if (!authed.user) return;
@@ -231,6 +250,43 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
       {error && <NoticeBox tone="bad" className="mb-4">{error}</NoticeBox>}
       {tests === null && <div className="text-[14px] text-kp-text-muted">Loading…</div>}
 
+      {tests !== null && tests.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tests by name…"
+            aria-label="Search tests by name"
+            className="focus-kp flex-1 min-w-[15rem] bg-kp-surface border border-kp-border rounded-lg px-3 py-2 text-[13.5px]"
+          />
+          <select
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            aria-label="Filter tests by tag"
+            className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2.5 py-2 text-[13.5px]"
+          >
+            <option value="">All tags</option>
+            {allTags.map((tag) => (
+              <option key={tag} value={tag}>{tag}</option>
+            ))}
+          </select>
+          {(search || tagFilter) && (
+            <>
+              <button
+                type="button"
+                onClick={() => { setSearch(""); setTagFilter(""); }}
+                className="px-3 py-2 text-[13px] font-semibold text-kp-text-muted border border-kp-border rounded-lg hover:text-kp-navy hover:bg-kp-surface-alt transition-colors"
+              >
+                Clear
+              </button>
+              <span className="text-[12.5px] text-kp-text-faint">
+                {filtered.length} of {tests.length}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
       {tests !== null && tests.length === 0 && (
         <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-10 text-center">
           <div className="text-[14px] text-kp-text-muted mb-4">
@@ -249,8 +305,14 @@ function TestsAdmin({ authed }: { authed: AuthState }) {
         </div>
       )}
 
+      {tests !== null && tests.length > 0 && filtered.length === 0 && (
+        <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-10 text-center text-[14px] text-kp-text-muted">
+          No tests match your search.
+        </div>
+      )}
+
       <div className="space-y-3">
-        {(tests ?? []).map((test) => (
+        {filtered.map((test) => (
           <div key={test.id} className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs">
             <div className="flex flex-wrap items-center gap-3 p-4">
               <div className="min-w-0 flex-1">

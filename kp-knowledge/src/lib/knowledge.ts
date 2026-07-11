@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { DEFAULT_SHIP_ID, ownedShipIds } from "./ships";
+import { computeTrainingRecord } from "./ranks";
 import {
   normalizeSlide,
   type AnswerKey,
@@ -27,6 +28,7 @@ import {
   type KnowledgeOpen,
   type KnowledgePoints,
   type KnowledgeQuestion,
+  type KnowledgeRankRecord,
   type KnowledgeTest,
 } from "../types/knowledge";
 
@@ -35,6 +37,7 @@ const ATTEMPTS = "knowledgeAttempts";
 const OPENS = "knowledgeOpens";
 const LEADERBOARD = "knowledgeLeaderboard";
 const POINTS = "knowledgePoints";
+const RANKS_COL = "knowledgeRanks";
 
 /* Record the first time this user opened a test (immutable — later opens are
  * a no-op). Best-effort: never blocks or throws into the taker's flow. */
@@ -179,6 +182,32 @@ export async function submitAttempt(args: {
   // Best-effort and independent of the attempt write — run them in parallel so
   // the submit spinner doesn't wait an extra round trip on the award.
   await Promise.all([attempt, awardTestPoints(args.uid, args.userName, args.test.id, args.result.score)]);
+  // Refresh the public Halo-ladder rank record off the full history (includes
+  // the attempt just written). Fire-and-forget — the result page needn't wait.
+  void updateTrainingRecord(args.uid, args.userName);
+}
+
+/* ── Training ranks (Halo ladder) ────────────────────────────────────
+ * One world-readable doc per user, recomputed wholesale from their own
+ * attempts so it self-heals/backfills on every submit. */
+export async function updateTrainingRecord(uid: string, userName: string): Promise<void> {
+  try {
+    const attempts = await listAttempts({ uid });
+    const rec = computeTrainingRecord(attempts);
+    if (rec.testsTaken === 0) return;
+    await setDoc(doc(db, RANKS_COL, uid), { uid, userName, ...rec, updatedAt: serverTimestamp() });
+  } catch {
+    /* rank ladder is a nice-to-have — never break the submit flow */
+  }
+}
+
+/* The whole ladder, best skill first (final ordering is done client-side by
+ * rank → skill → passes, but skill is the dominant term). */
+export async function listRanks(max = 200): Promise<KnowledgeRankRecord[]> {
+  const snap = await getDocs(
+    query(collection(db, RANKS_COL), orderBy("skill", "desc"), limit(max)),
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<KnowledgeRankRecord, "id">) }));
 }
 
 /* ── Points wallet ────────────────────────────────────────────────────

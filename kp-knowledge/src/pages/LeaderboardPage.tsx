@@ -6,24 +6,27 @@ import { listLeaderboard } from "../lib/knowledge";
 import { NoticeBox, TabPill, Th } from "../components/ui";
 import { StoreSection } from "./StoreSection";
 import { HangarSection } from "./HangarSection";
+import { RanksSection } from "./RanksSection";
 
 const RANK_BADGE = ["🥇", "🥈", "🥉"];
 
-type Tab = "board" | "store" | "hangar";
+type Tab = "ranks" | "board" | "store" | "hangar";
 
 export function LeaderboardPage() {
   const [params, setParams] = useSearchParams();
   const raw = params.get("tab");
-  const tab: Tab = raw === "store" ? "store" : raw === "hangar" ? "hangar" : "board";
+  const tab: Tab =
+    raw === "board" ? "board" : raw === "store" ? "store" : raw === "hangar" ? "hangar" : "ranks";
 
   return (
     <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
       <h1 className="text-[24px] sm:text-[30px] font-extrabold tracking-[-0.025em] text-kp-navy mb-4">
-        🏆 Arcade
+        🏆 Leaderboards
       </h1>
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-6 overflow-x-auto">
         {([
-          { key: "board", label: "🏆 Leaderboard" },
+          { key: "ranks", label: "🎖️ Ranks" },
+          { key: "board", label: "🕹️ Asteroids" },
           { key: "store", label: "🛒 Store" },
           { key: "hangar", label: "🚀 The Hangar" },
         ] as const).map((t) => (
@@ -31,12 +34,20 @@ export function LeaderboardPage() {
             key={t.key}
             label={t.label}
             active={tab === t.key}
-            onClick={() => setParams(t.key === "board" ? {} : { tab: t.key }, { replace: true })}
+            onClick={() => setParams(t.key === "ranks" ? {} : { tab: t.key }, { replace: true })}
           />
         ))}
       </div>
 
-      {tab === "store" ? <StoreSection /> : tab === "hangar" ? <HangarSection /> : <BoardSection />}
+      {tab === "store" ? (
+        <StoreSection />
+      ) : tab === "hangar" ? (
+        <HangarSection />
+      ) : tab === "board" ? (
+        <BoardSection />
+      ) : (
+        <RanksSection />
+      )}
     </main>
   );
 }

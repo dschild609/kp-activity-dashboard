@@ -203,6 +203,21 @@ export interface KnowledgePoints {
   updatedAt?: Timestamp;
 }
 
+/* One row per user on the training-rank ladder (doc id = uid), recomputed
+ * from their own attempt history on every submit. `passes` = passing attempts
+ * (EXP), `skill` = avg best % across distinct tests ÷ 2 (Halo's 1–50 scale).
+ * The rank itself is derived at render time from RANKS in lib/ranks.ts. */
+export interface KnowledgeRankRecord {
+  id: string; // = uid
+  uid: string;
+  userName: string;
+  passes: number;
+  testsTaken: number;
+  avgBest: number; // 0–100, one decimal
+  skill: number; // 0–50
+  updatedAt: Timestamp | null;
+}
+
 /* One row per user on the global Asteroids high-score leaderboard — their
  * personal best across any test. Doc id is the user's uid (best-of upsert).
  * `score` is arcade points, not a pass percentage. */

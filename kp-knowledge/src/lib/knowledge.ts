@@ -193,7 +193,11 @@ export async function submitAttempt(args: {
 export async function updateTrainingRecord(uid: string, userName: string): Promise<void> {
   try {
     const attempts = await listAttempts({ uid });
-    const rec = computeTrainingRecord(attempts);
+    // Skill growth is order-dependent (each win builds on the last), so hand
+    // the compute a chronological key.
+    const rec = computeTrainingRecord(
+      attempts.map((a) => ({ ...a, at: a.submittedAt?.toMillis() ?? 0 })),
+    );
     if (rec.testsTaken === 0) return;
     await setDoc(doc(db, RANKS_COL, uid), { uid, userName, ...rec, updatedAt: serverTimestamp() });
   } catch {

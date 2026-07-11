@@ -205,7 +205,8 @@ export interface KnowledgePoints {
 
 /* One row per user on the training-rank ladder (doc id = uid), recomputed
  * from their own attempt history on every submit. `passes` = passing attempts
- * (EXP), `skill` = avg best % across distinct tests ÷ 2 (Halo's 1–50 scale).
+ * (EXP); `skill` (Halo's 1–50) is EARNED win by win — each pass pulls it 30%
+ * of the way toward that win's score ÷ 2 (see computeTrainingRecord).
  * The rank itself is derived at render time from RANKS in lib/ranks.ts. */
 export interface KnowledgeRankRecord {
   id: string; // = uid

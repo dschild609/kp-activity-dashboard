@@ -126,19 +126,32 @@ export function rankIndexOf(passes: number, skill: number): number {
   return idx;
 }
 
-/* Derive a training record from a user's full attempt history. Skill uses the
- * BEST score per distinct test (so a bad first try never drags you down —
- * matching how Halo tracked Highest Skill, not current). */
+/* Derive a training record from a user's full attempt history.
+ *
+ * Skill grows like Halo's TrueSkill — it is EARNED through wins, never handed
+ * out: starting from 1, each PASSING attempt (in order) pulls your skill 30%
+ * of the way toward that win's ceiling (its score ÷ 2). One perfect test gets
+ * you ~15; the legendary 50 takes a sustained streak of ~13 near-perfect
+ * wins. Your scores still set your ceiling — a 70% player converges to ~35
+ * and can't out-grind the officer skill gates — and like Halo's Highest
+ * Skill, it never goes back down (losses just don't help). */
 export function computeTrainingRecord(
-  attempts: Array<{ testId: string; score: number; passed: boolean }>,
+  attempts: Array<{ testId: string; score: number; passed: boolean; at?: number }>,
 ): { passes: number; testsTaken: number; avgBest: number; skill: number } {
-  const passes = attempts.filter((a) => a.passed).length;
+  const ordered = [...attempts].sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+  const passes = ordered.filter((a) => a.passed).length;
   const best = new Map<string, number>();
-  for (const a of attempts) best.set(a.testId, Math.max(best.get(a.testId) ?? 0, a.score));
+  for (const a of ordered) best.set(a.testId, Math.max(best.get(a.testId) ?? 0, a.score));
   const testsTaken = best.size;
   const avgBest = testsTaken
     ? [...best.values()].reduce((a, b) => a + b, 0) / testsTaken
     : 0;
-  const skill = testsTaken ? Math.min(50, Math.max(1, Math.round(avgBest / 2))) : 0;
+  let s = 0;
+  for (const a of ordered) {
+    if (!a.passed) continue;
+    const ceiling = a.score / 2;
+    if (ceiling > s) s += 0.3 * (ceiling - s);
+  }
+  const skill = testsTaken ? Math.min(50, Math.max(1, Math.round(s))) : 0;
   return { passes, testsTaken, avgBest: Math.round(avgBest * 10) / 10, skill };
 }

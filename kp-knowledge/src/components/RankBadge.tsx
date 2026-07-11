@@ -141,7 +141,7 @@ export function RankBadge({ rankIndex, size = 34 }: { rankIndex: number; size?: 
 export function SkillShield({ skill }: { skill: number }) {
   const bg = skill >= 50 ? "#f5b83d" : skill >= 40 ? "#ff3b5c" : skill >= 25 ? "#5b8cff" : "#8896a6";
   return (
-    <span className="relative inline-grid place-items-center align-middle" title={`Skill ${skill} of 50 — average best score ÷ 2`}>
+    <span className="relative inline-grid place-items-center align-middle" title={`Skill ${skill} of 50 — grows with every passing test toward half that test's score`}>
       <svg width="24" height="26" viewBox="0 0 24 26" aria-hidden>
         <path
           d="M4 1.5 H20 Q22.5 1.5 22.5 4 V13 Q22.5 21 12 24.5 Q1.5 21 1.5 13 V4 Q1.5 1.5 4 1.5 Z"

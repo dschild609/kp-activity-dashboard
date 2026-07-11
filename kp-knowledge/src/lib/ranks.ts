@@ -4,11 +4,11 @@
 // capstone (Master Sergeant, First Lieutenant, … Five Star General).
 //
 // EXP = passing attempts ("battles won" — practice retakes count), Skill =
-// your average best score across the tests you've taken, mapped onto Halo's
-// 1–50 scale (a perfect 100% average is the legendary 50). Ranks gate on
-// BOTH, exactly like Halo 3's dual EXP + Highest Skill requirements —
-// grinding attempts alone stalls you in the enlisted ranks; the officer
-// ladder demands scores. Grades within a family are pure EXP.
+// Halo's 1–50 scale, EARNED win by win (see computeTrainingRecord — the one
+// place the formula lives). Ranks gate on BOTH, exactly like Halo 3's dual
+// EXP + Highest Skill requirements — grinding attempts alone stalls you in
+// the enlisted ranks; the officer ladder demands scores. Grades within a
+// family are pure EXP.
 
 export type RankSymbol = "diamond" | "chevron" | "bar" | "star" | "wings" | "laurel";
 export type RankMetal = "bronze" | "gold" | "silver";
@@ -18,8 +18,6 @@ export interface RankDef {
   id: string;
   /* Display name — the family name, or the Grade 4 capstone's own name */
   name: string;
-  /* "Grade 2" … "Grade 4"; null on a family's first step */
-  sub: string | null;
   group: RankGroup;
   /* Emblem recipe (see RankBadge) */
   symbol: RankSymbol;
@@ -32,10 +30,15 @@ export interface RankDef {
   skill: number;
 }
 
+/* "Grade 2"… sub-label under a rank's name (null on a family's first step). */
+export function rankSub(rank: RankDef): string | null {
+  return rank.grade > 1 ? `Grade ${rank.grade}` : null;
+}
+
 interface GradeStep {
   passes: number;
+  /* A named step (Master Sergeant, Five Star General, …) IS the capstone. */
   label?: string;
-  capstone?: boolean;
   /* laurel emblems vary star count per grade instead of grade bars */
   count?: number;
 }
@@ -56,12 +59,11 @@ function fam(
     ladder.push({
       id: `${slug}-${i + 1}`,
       name: g.label ?? name,
-      sub: i === 0 ? null : `Grade ${i + 1}`,
       group,
       symbol,
       count: g.count ?? count,
       grade: i + 1,
-      capstone: !!g.capstone,
+      capstone: !!g.label,
       metal,
       passes: g.passes,
       skill,
@@ -79,39 +81,39 @@ fam("Sergeant", "Enlisted", "chevron", 3, "gold", 18, [
 ]);
 fam("Gunnery Sergeant", "Enlisted", "chevron", 3, "gold", 24, [
   { passes: 10 }, { passes: 12 }, { passes: 14 },
-  { passes: 16, label: "Master Sergeant", capstone: true },
+  { passes: 16, label: "Master Sergeant" },
 ]);
 
 /* ── Officer ──────────────────────────────────────────────────────── */
 fam("Lieutenant", "Officer", "bar", 1, "silver", 28, [
   { passes: 18 }, { passes: 20 }, { passes: 22 },
-  { passes: 24, label: "First Lieutenant", capstone: true },
+  { passes: 24, label: "First Lieutenant" },
 ]);
 fam("Captain", "Officer", "bar", 2, "silver", 32, [
   { passes: 26 }, { passes: 28 }, { passes: 30 },
-  { passes: 32, label: "Staff Captain", capstone: true },
+  { passes: 32, label: "Staff Captain" },
 ]);
 fam("Major", "Officer", "star", 1, "silver", 36, [
   { passes: 34 }, { passes: 36 }, { passes: 38 },
-  { passes: 40, label: "Field Major", capstone: true },
+  { passes: 40, label: "Field Major" },
 ]);
 fam("Commander", "Officer", "star", 2, "silver", 40, [
   { passes: 43 }, { passes: 46 }, { passes: 49 },
-  { passes: 52, label: "Strike Commander", capstone: true },
+  { passes: 52, label: "Strike Commander" },
 ]);
 fam("Colonel", "Officer", "star", 3, "silver", 43, [
   { passes: 55 }, { passes: 58 }, { passes: 61 },
-  { passes: 64, label: "Force Colonel", capstone: true },
+  { passes: 64, label: "Force Colonel" },
 ]);
 fam("Brigadier", "Officer", "wings", 1, "silver", 46, [
   { passes: 68 }, { passes: 72 }, { passes: 76 },
-  { passes: 80, label: "Brigadier General", capstone: true },
+  { passes: 80, label: "Brigadier General" },
 ]);
 fam("General", "Officer", "laurel", 1, "gold", 48, [
   { passes: 85, count: 1 },
   { passes: 90, count: 2 },
   { passes: 95, count: 3 },
-  { passes: 100, count: 5, label: "Five Star General", capstone: true },
+  { passes: 100, count: 5, label: "Five Star General" },
 ]);
 
 export const RANKS: RankDef[] = ladder;

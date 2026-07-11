@@ -546,6 +546,23 @@ function convertSlide(slide: KnowledgeSlide, kind: SlideKind): KnowledgeSlide {
   }
 }
 
+/* The ONE place a slide takes on an image (picker, upload, snip): a different
+ * image invalidates any hotspot target drawn on the old one, and giving an
+ * image to a plain text slide turns it into a screenshot slide — hotspot and
+ * video slides keep their kind. */
+function assignImage(slide: KnowledgeSlide, url: string | null, label: string | null): KnowledgeSlide {
+  return {
+    ...slide,
+    imageUrl: url,
+    imageLabel: label,
+    hotspot: url === slide.imageUrl ? (slide.hotspot ?? null) : null,
+    kind:
+      url && slide.kind !== "image" && slide.kind !== "hotspot" && slide.kind !== "video"
+        ? "image"
+        : slide.kind,
+  };
+}
+
 /* Video-slide source picker (paste a link or upload a file). Manager-gated
  * by the surrounding editor; the upload goes straight to Storage. */
 function VideoSourceControls({
@@ -713,12 +730,7 @@ function SlideWorkbench({
       region
     );
     onAssetsAdded([asset]);
-    onChange(
-      slides.map((s, j) =>
-        // The snip replaces the image, so any hotspot target no longer lines up
-        j === index ? { ...s, imageUrl: asset.url, imageLabel: asset.name, hotspot: null } : s
-      )
-    );
+    onChange(slides.map((s, j) => (j === index ? assignImage(s, asset.url, asset.name) : s)));
     setSnipping(false);
   }
 
@@ -735,14 +747,7 @@ function SlideWorkbench({
         onChange(
           slides.map((s, j) =>
             j === index
-              ? {
-                  ...s,
-                  // Hotspot slides keep their kind; anything else becomes an image slide
-                  kind: s.kind === "hotspot" ? s.kind : ("image" as const),
-                  imageUrl: a.url,
-                  imageLabel: added.length > 1 ? `${a.name} — page ${a.page}` : a.name,
-                  hotspot: null,
-                }
+              ? assignImage(s, a.url, added.length > 1 ? `${a.name} — page ${a.page}` : a.name)
               : s
           )
         );
@@ -836,16 +841,7 @@ function SlideWorkbench({
             onChange={(e) => {
               const url = e.target.value || null;
               const asset = assets.find((a) => a.url === url);
-              update({
-                ...slide,
-                imageUrl: url,
-                imageLabel: asset ? `${asset.name} — page ${asset.page}` : null,
-                // A different image invalidates a hotspot target's coordinates
-                hotspot: url === slide.imageUrl ? (slide.hotspot ?? null) : null,
-                ...(url && slide.kind !== "image" && slide.kind !== "hotspot"
-                  ? { kind: "image" as const }
-                  : null),
-              });
+              update(assignImage(slide, url, asset ? `${asset.name} — page ${asset.page}` : null));
             }}
             className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[12.5px] max-w-[220px]"
             disabled={assets.length === 0}

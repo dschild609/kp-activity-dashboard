@@ -1,15 +1,16 @@
 // The training-rank ladder — a Halo 3-style leaderboard for tests. EXP =
-// passing attempts, Skill = avg best score ÷ 2 (1–50), and every one of the
-// 42 mastery ranks (Recruit → Five Star General) gates on both.
+// passing attempts, Skill grows win by win on Halo's 1–50 scale (the formula
+// lives in lib/ranks.ts), and every one of the 42 mastery ranks (Recruit →
+// Five Star General) gates on both.
 
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgeRankRecord } from "../types/knowledge";
 import { listRanks } from "../lib/knowledge";
-import { RANKS, rankIndexOf, type RankGroup } from "../lib/ranks";
+import { RANKS, rankIndexOf, rankSub, type RankGroup } from "../lib/ranks";
 import { RankBadge, SkillShield } from "../components/RankBadge";
-import { NoticeBox, Th } from "../components/ui";
+import { EmptyCard, NoticeBox, TableCard, Th, YouTag } from "../components/ui";
 
 export function RanksSection() {
   const { user } = useOutletContext<AuthState>();
@@ -51,24 +52,21 @@ export function RanksSection() {
       {rows === null && !error && <div className="text-[14px] text-kp-text-muted">Loading…</div>}
 
       {rows !== null && ranked.length === 0 && (
-        <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-10 text-center text-[14px] text-kp-text-muted">
-          No ranks yet — pass a test to enlist.
-        </div>
+        <EmptyCard>No ranks yet — pass a test to enlist.</EmptyCard>
       )}
 
       {ranked.length > 0 && (
-        <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs overflow-x-auto">
-          <table className="w-full text-[14px]">
-            <thead>
-              <tr className="bg-kp-surface-alt border-b border-kp-border-strong">
-                <Th>Rank</Th>
-                <Th>Player</Th>
-                <Th align="right">Skill</Th>
-                <Th align="right">Passes</Th>
-                <Th align="right">Avg best</Th>
-              </tr>
-            </thead>
-            <tbody>
+        <TableCard
+          head={
+            <>
+              <Th>Rank</Th>
+              <Th>Player</Th>
+              <Th align="right">Skill</Th>
+              <Th align="right">Passes</Th>
+              <Th align="right">Avg best</Th>
+            </>
+          }
+        >
               {ranked.map((r) => {
                 const me = user?.uid === r.uid;
                 const rk = RANKS[r.rankIndex];
@@ -84,9 +82,9 @@ export function RanksSection() {
                         <RankBadge rankIndex={r.rankIndex} size={36} />
                         <span className="leading-tight">
                           <span className="block font-semibold text-kp-text">{rk.name}</span>
-                          {rk.sub && (
+                          {rankSub(rk) && (
                             <span className="block font-mono text-[9.5px] uppercase tracking-[0.14em] text-kp-text-faint">
-                              {rk.sub}
+                              {rankSub(rk)}
                             </span>
                           )}
                         </span>
@@ -94,11 +92,7 @@ export function RanksSection() {
                     </td>
                     <td className="px-4 py-2 font-semibold text-kp-text">
                       {r.userName}
-                      {me && (
-                        <span className="ml-2 align-middle text-[10px] font-bold tracking-wide text-kp-crimson">
-                          YOU
-                        </span>
-                      )}
+                      {me && <YouTag />}
                     </td>
                     <td className="px-4 py-2 text-right">
                       <SkillShield skill={r.skill} />
@@ -110,9 +104,7 @@ export function RanksSection() {
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+        </TableCard>
       )}
 
       {/* The full 42-rank ladder, grouped like the insignia chart. */}
@@ -129,9 +121,9 @@ export function RanksSection() {
                 >
                   <RankBadge rankIndex={i} size={58} />
                   <div className="mt-1.5 text-[12px] font-bold text-kp-text leading-tight">{rk.name}</div>
-                  {rk.sub && (
+                  {rankSub(rk) && (
                     <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-kp-text-faint mt-0.5">
-                      {rk.sub}
+                      {rankSub(rk)}
                     </div>
                   )}
                   <div className="text-[10.5px] text-kp-text-faint leading-tight mt-1">

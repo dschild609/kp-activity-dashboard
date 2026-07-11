@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { KnowledgeSlide } from "../types/knowledge";
 import { HOTSPOT_FALLBACK_PROMPT, HOTSPOT_REVEAL_AFTER, hotspotHit } from "../lib/hotspot";
+import { CREAM, CRIMSON, HOTSPOT_CHIP_STYLE, INK, MUTED } from "../lib/slideTheme";
 
 /* The employee-facing hotspot exercise: find and click the target region on
  * the screenshot to continue. Misses get a ripple + a nudge; after a few
@@ -11,11 +12,6 @@ import { HOTSPOT_FALLBACK_PROMPT, HOTSPOT_REVEAL_AFTER, hotspotHit } from "../li
  *
  * Mount with key={slideIndex} — a new slide gets a fresh exercise (miss
  * count, ripple, reveal) via remount rather than reset-in-effect. */
-
-const INK = "#13202b";
-const CRIMSON = "#94002a";
-const CREAM = "#f5f4ef";
-const MUTED = "#5b6770";
 
 export function HotspotSlidePlayer({
   slide,
@@ -32,11 +28,6 @@ export function HotspotSlidePlayer({
   const [misses, setMisses] = useState(0);
   const [ripple, setRipple] = useState<{ x: number; y: number; key: number } | null>(null);
   const [revealed, setRevealed] = useState(false);
-  const rippleTimer = useRef<number | null>(null);
-
-  useEffect(() => () => {
-    if (rippleTimer.current) window.clearTimeout(rippleTimer.current);
-  }, []);
 
   const hs = slide.hotspot!;
   const done = found || revealed;
@@ -51,9 +42,10 @@ export function HotspotSlidePlayer({
       return;
     }
     setMisses((m) => m + 1);
-    setRipple({ x: nx, y: ny, key: Date.now() });
-    if (rippleTimer.current) window.clearTimeout(rippleTimer.current);
-    rippleTimer.current = window.setTimeout(() => setRipple(null), 650);
+    // Keyed self-clearing ripple: a stale timeout can't erase a newer ripple.
+    const key = Date.now();
+    setRipple({ x: nx, y: ny, key });
+    window.setTimeout(() => setRipple((r) => (r?.key === key ? null : r)), 650);
   }
 
   function reveal() {
@@ -77,7 +69,7 @@ export function HotspotSlidePlayer({
         </h2>
         <div
           className="mt-3 inline-block rounded-lg px-3.5 py-2.5 text-[14px] font-semibold"
-          style={{ background: "rgba(148,0,42,.08)", border: "1px solid rgba(148,0,42,.25)", color: INK }}
+          style={HOTSPOT_CHIP_STYLE}
         >
           🎯 {slide.hotspotPrompt || HOTSPOT_FALLBACK_PROMPT}
         </div>

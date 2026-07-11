@@ -193,6 +193,14 @@ type ContentBlock =
       source: { type: "base64"; media_type: "image/jpeg"; data: string };
     };
 
+/* Working rectangle — page pixels or image fractions per context. */
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 interface GeneratedSlide {
   kind: "title" | "section" | "agenda" | "bullets" | "steps" | "image" | "hotspot";
   kicker: string | null;
@@ -362,7 +370,7 @@ export const generateKnowledgeTest = managerEndpoint(
       generated.slides.map(async (s, si) => {
         let imageUrl: string | null = null;
         let imageLabel: string | null = null;
-        let hotspot: { x: number; y: number; w: number; h: number } | null = null;
+        let hotspot: Rect | null = null;
         const pageInfo = s.image ? pages[s.image.exhibit - 1]?.[s.image.page - 1] : undefined;
         if (s.image && pageInfo && pageInfo.width > 0 && pageInfo.height > 0) {
           const ex = exhibitList[s.image.exhibit - 1];
@@ -370,7 +378,7 @@ export const generateKnowledgeTest = managerEndpoint(
           imageLabel = `${ex.name} — page ${s.image.page}`;
 
           // Clamp the hotspot target (page pixel space) up front.
-          let hsPx: { x: number; y: number; w: number; h: number } | null = null;
+          let hsPx: Rect | null = null;
           if (s.kind === "hotspot" && s.hotspot) {
             const hx = Math.max(0, Math.min(s.hotspot.x, pageInfo.width - 2));
             const hy = Math.max(0, Math.min(s.hotspot.y, pageInfo.height - 2));
@@ -383,7 +391,7 @@ export const generateKnowledgeTest = managerEndpoint(
           }
 
           // Clamp the crop region; ignore degenerate or near-full-page crops.
-          let crop: { x: number; y: number; w: number; h: number } | null = null;
+          let crop: Rect | null = null;
           const r = s.image.region;
           if (r) {
             const x = Math.max(0, Math.min(r.x, pageInfo.width - 1));

@@ -3,7 +3,7 @@ import { useOutletContext, useSearchParams } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgeLeaderboardEntry } from "../types/knowledge";
 import { listLeaderboard } from "../lib/knowledge";
-import { NoticeBox, TabPill, Th } from "../components/ui";
+import { EmptyCard, NoticeBox, TabPill, TableCard, Th, YouTag } from "../components/ui";
 import { StoreSection } from "./StoreSection";
 import { HangarSection } from "./HangarSection";
 import { RanksSection } from "./RanksSection";
@@ -81,24 +81,21 @@ function BoardSection() {
       )}
 
       {rows !== null && rows.length === 0 && (
-        <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-10 text-center text-[14px] text-kp-text-muted">
-          No scores yet — be the first to post one by playing a test as Asteroids.
-        </div>
+        <EmptyCard>No scores yet — be the first to post one by playing a test as Asteroids.</EmptyCard>
       )}
 
       {rows !== null && rows.length > 0 && (
-        <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs overflow-x-auto">
-          <table className="w-full text-[14px]">
-            <thead>
-              <tr className="bg-kp-surface-alt border-b border-kp-border-strong">
-                <Th>Rank</Th>
-                <Th>Player</Th>
-                <Th align="right">Score</Th>
-                <Th>Test</Th>
-                <Th align="right">Set</Th>
-              </tr>
-            </thead>
-            <tbody>
+        <TableCard
+          head={
+            <>
+              <Th>Rank</Th>
+              <Th>Player</Th>
+              <Th align="right">Score</Th>
+              <Th>Test</Th>
+              <Th align="right">Set</Th>
+            </>
+          }
+        >
               {rows.map((r, i) => {
                 const me = user?.uid === r.uid;
                 return (
@@ -113,11 +110,7 @@ function BoardSection() {
                     </td>
                     <td className="px-4 py-3 font-semibold text-kp-text">
                       {r.userName}
-                      {me && (
-                        <span className="ml-2 align-middle text-[10px] font-bold tracking-wide text-kp-crimson">
-                          YOU
-                        </span>
-                      )}
+                      {me && <YouTag />}
                     </td>
                     <td className="px-4 py-3 text-right font-extrabold tabular-nums text-kp-navy">
                       {r.score.toLocaleString()}
@@ -129,9 +122,7 @@ function BoardSection() {
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+        </TableCard>
       )}
     </>
   );

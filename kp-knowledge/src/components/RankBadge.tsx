@@ -31,14 +31,13 @@ export function RankBadge({ rankIndex, size = 34 }: { rankIndex: number; size?: 
   const base: React.ReactNode[] = [];
 
   if (rank.symbol === "diamond") {
+    // Both diamond ranks (Recruit, Apprentice) wear a single hollow diamond.
     const r = 21;
-    const pos = rank.count === 2 ? [42, 78] : [60];
-    pos.forEach((cx, i) => {
-      const d =
-        `M${cx} ${cy - r} L${cx + r} ${cy} L${cx} ${cy + r} L${cx - r} ${cy} Z ` +
-        `M${cx} ${cy - r * 0.5} L${cx + r * 0.5} ${cy} L${cx} ${cy + r * 0.5} L${cx - r * 0.5} ${cy} Z`;
-      base.push(<path key={`d${i}`} d={d} fillRule="evenodd" fill={grad} />);
-    });
+    const cx = 60;
+    const d =
+      `M${cx} ${cy - r} L${cx + r} ${cy} L${cx} ${cy + r} L${cx - r} ${cy} Z ` +
+      `M${cx} ${cy - r * 0.5} L${cx + r * 0.5} ${cy} L${cx} ${cy + r * 0.5} L${cx - r * 0.5} ${cy} Z`;
+    base.push(<path key="d" d={d} fillRule="evenodd" fill={grad} />);
   } else if (rank.symbol === "chevron") {
     const pitch = 18, drop = 36, thick = 15;
     const blockH = (rank.count - 1) * pitch + drop + thick;
@@ -82,11 +81,10 @@ export function RankBadge({ rankIndex, size = 34 }: { rankIndex: number; size?: 
         <ellipse key={`lr${i}`} cx={120 - x} cy={y - 4} rx={9} ry={4.5} fill={gold} transform={`rotate(${-rot} ${120 - x} ${y - 4})`} />,
       );
     });
+    // General grades wear 1, 2, 3, then 5 stars (no 4-star rank exists).
     const n = rank.count;
     if (n >= 5) {
       base.push(star(60, 54, 0.3, silver, "g0"), star(42, 40, 0.24, silver, "g1"), star(78, 40, 0.24, silver, "g2"), star(42, 68, 0.24, silver, "g3"), star(78, 68, 0.24, silver, "g4"));
-    } else if (n === 4) {
-      base.push(star(60, 40, 0.32, silver, "g0"), star(42, 58, 0.32, silver, "g1"), star(78, 58, 0.32, silver, "g2"), star(60, 74, 0.32, silver, "g3"));
     } else if (n === 3) {
       base.push(star(60, 42, 0.36, silver, "g0"), star(45, 66, 0.36, silver, "g1"), star(75, 66, 0.36, silver, "g2"));
     } else if (n === 2) {

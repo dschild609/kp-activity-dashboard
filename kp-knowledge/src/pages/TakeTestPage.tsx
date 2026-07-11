@@ -67,6 +67,28 @@ function slideProgressKey(uid: string, testId: string): string {
   return `kpk-slides-${uid}-${testId}`;
 }
 
+/* A localStorage-persisted set of slide indexes — watched videos, solved
+ * hotspots, and whatever the next gated slide kind needs. Lazy-loaded once;
+ * adds are idempotent and write through. Null key (preview) = no persistence. */
+function usePersistedIndexSet(key: string | null): [Set<number>, (i: number) => void] {
+  const [set, setSet] = useState<Set<number>>(() => {
+    if (!key) return new Set();
+    try {
+      return new Set<number>(JSON.parse(localStorage.getItem(key) ?? "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  const add = (i: number) =>
+    setSet((prev) => {
+      if (prev.has(i)) return prev;
+      const next = new Set(prev).add(i);
+      if (key) localStorage.setItem(key, JSON.stringify([...next]));
+      return next;
+    });
+  return [set, add];
+}
+
 export function TakeTestPage({ preview = false }: { preview?: boolean }) {
   const { testId } = useParams<{ testId: string }>();
   const { user, canManage } = useOutletContext<AuthState>();
@@ -569,42 +591,10 @@ function SlideDeck({
   });
   const [resumed] = useState(index > 0);
 
-  // Which video slides this user has already watched (persisted, so a retake
-  // or a resumed session doesn't force a re-watch). Not gated in preview.
-  const watchedKey = progressKey ? `${progressKey}-watched` : null;
-  const [watched, setWatched] = useState<Set<number>>(() => {
-    if (!watchedKey) return new Set();
-    try {
-      return new Set<number>(JSON.parse(localStorage.getItem(watchedKey) ?? "[]"));
-    } catch {
-      return new Set();
-    }
-  });
-  const markWatched = (i: number) =>
-    setWatched((prev) => {
-      if (prev.has(i)) return prev;
-      const next = new Set(prev).add(i);
-      if (watchedKey) localStorage.setItem(watchedKey, JSON.stringify([...next]));
-      return next;
-    });
-
-  // Hotspot slides this user has already solved (same persistence pattern).
-  const foundKey = progressKey ? `${progressKey}-hotspots` : null;
-  const [found, setFound] = useState<Set<number>>(() => {
-    if (!foundKey) return new Set();
-    try {
-      return new Set<number>(JSON.parse(localStorage.getItem(foundKey) ?? "[]"));
-    } catch {
-      return new Set();
-    }
-  });
-  const markFound = (i: number) =>
-    setFound((prev) => {
-      if (prev.has(i)) return prev;
-      const next = new Set(prev).add(i);
-      if (foundKey) localStorage.setItem(foundKey, JSON.stringify([...next]));
-      return next;
-    });
+  // Which video slides this user has watched and which hotspot targets
+  // they've found — persisted so a retake or resumed session doesn't re-gate.
+  const [watched, markWatched] = usePersistedIndexSet(progressKey ? `${progressKey}-watched` : null);
+  const [found, markFound] = usePersistedIndexSet(progressKey ? `${progressKey}-hotspots` : null);
 
   useEffect(() => {
     if (progressKey) localStorage.setItem(progressKey, String(index));

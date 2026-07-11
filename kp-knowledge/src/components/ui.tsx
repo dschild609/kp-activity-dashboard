@@ -130,6 +130,37 @@ export function TabPill({
   );
 }
 
+/* Centered empty-state card for list/table pages. */
+export function EmptyCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-10 text-center text-[14px] text-kp-text-muted">
+      {children}
+    </div>
+  );
+}
+
+/* Card-wrapped data table: surface shell + styled header row. Pass <Th> cells
+ * as `head` and <tr> rows as children. */
+export function TableCard({ head, children }: { head: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs overflow-x-auto">
+      <table className="w-full text-[14px]">
+        <thead>
+          <tr className="bg-kp-surface-alt border-b border-kp-border-strong">{head}</tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+/* "YOU" marker on the signed-in user's own leaderboard row. */
+export function YouTag() {
+  return (
+    <span className="ml-2 align-middle text-[10px] font-bold tracking-wide text-kp-crimson">YOU</span>
+  );
+}
+
 export function Th({ children, align }: { children: React.ReactNode; align?: "right" }) {
   return (
     <th

@@ -2,6 +2,7 @@ import { useRef } from "react";
 import type { KnowledgeSlide, SlideColumn, SlideStep } from "../types/knowledge";
 import { parseVideoUrl } from "../lib/video";
 import { HOTSPOT_FALLBACK_PROMPT } from "../lib/hotspot";
+import { CREAM, CRIMSON, HAIRLINE, HOTSPOT_CHIP_STYLE, INK, MUTED } from "../lib/slideTheme";
 
 /* Renders one training slide per the "KP Training Template" deck. The
  * palette is fixed (ink / crimson / cream from the template) regardless of
@@ -11,12 +12,6 @@ import { HOTSPOT_FALLBACK_PROMPT } from "../lib/hotspot";
  * Pass `onChange` to make the slide editable in place: text becomes
  * click-to-edit, and bullet/item/step rows grow hover controls for
  * add / remove / reorder. Image slides get side-flip and remove controls. */
-
-const INK = "#13202b";
-const CRIMSON = "#94002a";
-const CREAM = "#f5f4ef";
-const MUTED = "#5b6770";
-const HAIRLINE = "#e3e1d8";
 
 interface EditCtx {
   onChange: (next: KnowledgeSlide) => void;
@@ -59,6 +54,40 @@ export function SlideView({
   );
 }
 
+/* Small white chip button overlaid on a slide's image pane (edit mode). */
+function PaneButton({
+  onClick,
+  title,
+  color = INK,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  color?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
+      style={{ color }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* Placeholder when a screenshot slide has no image yet. */
+function EmptyImageNote({ edit }: { edit: boolean }) {
+  return (
+    <span className="font-mono uppercase text-[11px] tracking-[0.2em] px-3 py-1.5 bg-white/70" style={{ color: MUTED }}>
+      {edit ? "Pick an image below" : "No image selected"}
+    </span>
+  );
+}
+
 /* Editor/thumbnail representation of a hotspot slide. Shows the target as a
  * dashed rectangle in EDIT mode only — the trainee must never see it (the
  * interactive employee view lives in the deck, like the video player). */
@@ -96,26 +125,18 @@ function HotspotSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }
             {edit && (
               <div className="absolute top-2 left-2 flex gap-1.5">
                 {edit.onSetHotspot && (
-                  <button
-                    type="button"
+                  <PaneButton
                     onClick={edit.onSetHotspot}
-                    className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
-                    style={{ color: hs ? INK : CRIMSON }}
                     title="Draw the region the trainee must click"
+                    color={hs ? INK : CRIMSON}
                   >
                     🎯 {hs ? "move target" : "set target"}
-                  </button>
+                  </PaneButton>
                 )}
                 {edit.onSnip && (
-                  <button
-                    type="button"
-                    onClick={edit.onSnip}
-                    className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
-                    style={{ color: INK }}
-                    title="Crop to a part of this image"
-                  >
+                  <PaneButton onClick={edit.onSnip} title="Crop to a part of this image">
                     ✂ snip
-                  </button>
+                  </PaneButton>
                 )}
               </div>
             )}
@@ -129,9 +150,7 @@ function HotspotSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }
             )}
           </>
         ) : (
-          <span className="font-mono uppercase text-[11px] tracking-[0.2em] px-3 py-1.5 bg-white/70" style={{ color: MUTED }}>
-            {edit ? "Pick an image below" : "No image selected"}
-          </span>
+          <EmptyImageNote edit={!!edit} />
         )}
       </div>
       <div className="px-8 py-8 flex flex-col justify-center overflow-y-auto">
@@ -141,7 +160,7 @@ function HotspotSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }
         </h2>
         <div
           className="mt-4 rounded-lg px-3.5 py-3 text-[14px] font-semibold leading-snug"
-          style={{ background: "rgba(148,0,42,.08)", border: `1px solid rgba(148,0,42,.25)`, color: INK }}
+          style={HOTSPOT_CHIP_STYLE}
         >
           🎯{" "}
           <Txt
@@ -610,42 +629,26 @@ function ImageSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) 
           )}
           {edit && (
             <div className="absolute top-2 left-2 flex gap-1.5">
-              <button
-                type="button"
-                onClick={cyclePosition}
-                className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
-                style={{ color: INK }}
-                title="Cycle image position: left / right / top"
-              >
+              <PaneButton onClick={cyclePosition} title="Cycle image position: left / right / top">
                 ⇄ {position}
-              </button>
+              </PaneButton>
               {edit.onSnip && (
-                <button
-                  type="button"
-                  onClick={edit.onSnip}
-                  className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
-                  style={{ color: INK }}
-                  title="Crop to a part of this image"
-                >
+                <PaneButton onClick={edit.onSnip} title="Crop to a part of this image">
                   ✂ snip
-                </button>
+                </PaneButton>
               )}
-              <button
-                type="button"
+              <PaneButton
                 onClick={() => c?.({ ...slide, imageUrl: null, imageLabel: null })}
-                className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
-                style={{ color: CRIMSON }}
                 title="Remove image"
+                color={CRIMSON}
               >
                 ✕ remove
-              </button>
+              </PaneButton>
             </div>
           )}
         </>
       ) : (
-        <span className="font-mono uppercase text-[11px] tracking-[0.2em] px-3 py-1.5 bg-white/70" style={{ color: MUTED }}>
-          {edit ? "Pick an image below" : "No image selected"}
-        </span>
+        <EmptyImageNote edit={!!edit} />
       )}
     </div>
   );

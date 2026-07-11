@@ -182,27 +182,26 @@ export const editKnowledgeTest = managerEndpoint(
       return;
     }
 
-    // Guard: slide images must reference this test's own assets, and hotspot
-    // targets must be sane 0-1 fractions on a slide that actually has an image.
+    // Guard: slide images must reference this test's own assets. A hotspot
+    // target only survives with the exact image it was drawn on — this model
+    // never sees pixels, so a moved or invented rectangle would be blind
+    // noise, and a target riding onto a different image is silently-wrong
+    // content. The saved deck's (imageUrl → hotspot) pairings are authoritative.
     const assetUrls = new Set(assets.map((a) => a.url));
-    const clamp01 = (n: unknown): number | null =>
-      typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : null;
+    const originalHotspot = new Map<string, unknown>(
+      ((test.slides ?? []) as Array<Record<string, unknown>>)
+        .filter((s) => s.kind === "hotspot" && typeof s.imageUrl === "string" && s.hotspot)
+        .map((s) => [s.imageUrl as string, s.hotspot])
+    );
     const slides = edited.slides.map((s) => {
       const imageOk = typeof s.imageUrl === "string" && assetUrls.has(s.imageUrl);
-      let hotspot: { x: number; y: number; w: number; h: number } | null = null;
-      if (imageOk && s.hotspot && typeof s.hotspot === "object") {
-        const r = s.hotspot as Record<string, unknown>;
-        const x = clamp01(r.x), y = clamp01(r.y), w = clamp01(r.w), h = clamp01(r.h);
-        if (x != null && y != null && w != null && h != null && w > 0 && h > 0) {
-          hotspot = { x, y, w, h };
-        }
-      }
       return {
         ...s,
         imageUrl: imageOk ? s.imageUrl : null,
         imageLabel: imageOk ? (s.imageLabel ?? null) : null,
         imagePosition: s.imagePosition ?? "left",
-        hotspot,
+        hotspot:
+          imageOk && s.kind === "hotspot" ? (originalHotspot.get(s.imageUrl as string) ?? null) : null,
         hotspotPrompt: typeof s.hotspotPrompt === "string" ? s.hotspotPrompt : null,
       };
     });

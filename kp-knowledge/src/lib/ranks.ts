@@ -1,40 +1,123 @@
-// Halo 3-style training ranks. EXP = passing attempts ("battles won" —
-// practice retakes count), Skill = your average best score across the tests
-// you've taken, mapped onto Halo's 1–50 skill scale (a perfect 100% average
-// is the legendary 50). Ranks gate on BOTH, exactly like Halo 3's dual
-// EXP + Highest Skill requirements — grinding attempts alone caps you out in
-// the enlisted ranks; the officer ladder demands scores.
+// Halo 3-style training ranks — the full 42-step mastery ladder from the
+// "Rank Insignia" spec: every rank family has Grades (2–4 steps), enlisted
+// wear bronze/gold, officers silver, and each family's Grade 4 is a named
+// capstone (Master Sergeant, First Lieutenant, … Five Star General).
+//
+// EXP = passing attempts ("battles won" — practice retakes count), Skill =
+// your average best score across the tests you've taken, mapped onto Halo's
+// 1–50 scale (a perfect 100% average is the legendary 50). Ranks gate on
+// BOTH, exactly like Halo 3's dual EXP + Highest Skill requirements —
+// grinding attempts alone stalls you in the enlisted ranks; the officer
+// ladder demands scores. Grades within a family are pure EXP.
+
+export type RankSymbol = "diamond" | "chevron" | "bar" | "star" | "wings" | "laurel";
+export type RankMetal = "bronze" | "gold" | "silver";
+export type RankGroup = "Enlisted" | "Officer";
 
 export interface RankDef {
   id: string;
+  /* Display name — the family name, or the Grade 4 capstone's own name */
   name: string;
-  /* Passing attempts required (EXP) */
+  /* "Grade 2" … "Grade 4"; null on a family's first step */
+  sub: string | null;
+  group: RankGroup;
+  /* Emblem recipe (see RankBadge) */
+  symbol: RankSymbol;
+  count: number;
+  grade: number;
+  capstone: boolean;
+  metal: RankMetal;
+  /* Requirements */
   passes: number;
-  /* Minimum skill (1–50) required */
   skill: number;
 }
 
-export const RANKS: RankDef[] = [
-  { id: "recruit", name: "Recruit", passes: 0, skill: 0 },
-  { id: "apprentice", name: "Apprentice", passes: 1, skill: 0 },
-  { id: "private", name: "Private", passes: 2, skill: 5 },
-  { id: "corporal", name: "Corporal", passes: 3, skill: 12 },
-  { id: "sergeant", name: "Sergeant", passes: 4, skill: 18 },
-  { id: "gunnery-sergeant", name: "Gunnery Sergeant", passes: 6, skill: 24 },
-  { id: "lieutenant", name: "Lieutenant", passes: 8, skill: 28 },
-  { id: "captain", name: "Captain", passes: 10, skill: 32 },
-  { id: "major", name: "Major", passes: 13, skill: 36 },
-  { id: "commander", name: "Commander", passes: 16, skill: 40 },
-  { id: "colonel", name: "Colonel", passes: 20, skill: 43 },
-  { id: "brigadier", name: "Brigadier", passes: 25, skill: 46 },
-  { id: "general", name: "General", passes: 30, skill: 48 },
-];
-
-export function rankName(rankIndex: number): string {
-  return RANKS[Math.max(0, Math.min(rankIndex, RANKS.length - 1))].name;
+interface GradeStep {
+  passes: number;
+  label?: string;
+  capstone?: boolean;
+  /* laurel emblems vary star count per grade instead of grade bars */
+  count?: number;
 }
 
-/* Highest rank whose EXP and skill gates are both met. */
+const ladder: RankDef[] = [];
+
+function fam(
+  name: string,
+  group: RankGroup,
+  symbol: RankSymbol,
+  count: number,
+  metal: RankMetal,
+  skill: number,
+  grades: GradeStep[],
+): void {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  grades.forEach((g, i) => {
+    ladder.push({
+      id: `${slug}-${i + 1}`,
+      name: g.label ?? name,
+      sub: i === 0 ? null : `Grade ${i + 1}`,
+      group,
+      symbol,
+      count: g.count ?? count,
+      grade: i + 1,
+      capstone: !!g.capstone,
+      metal,
+      passes: g.passes,
+      skill,
+    });
+  });
+}
+
+/* ── Enlisted ─────────────────────────────────────────────────────── */
+fam("Recruit", "Enlisted", "diamond", 1, "bronze", 0, [{ passes: 0 }]);
+fam("Apprentice", "Enlisted", "diamond", 1, "bronze", 0, [{ passes: 1 }, { passes: 2 }]);
+fam("Private", "Enlisted", "chevron", 1, "gold", 5, [{ passes: 3 }, { passes: 4 }]);
+fam("Corporal", "Enlisted", "chevron", 2, "gold", 12, [{ passes: 5 }, { passes: 6 }]);
+fam("Sergeant", "Enlisted", "chevron", 3, "gold", 18, [
+  { passes: 7 }, { passes: 8 }, { passes: 9 },
+]);
+fam("Gunnery Sergeant", "Enlisted", "chevron", 3, "gold", 24, [
+  { passes: 10 }, { passes: 12 }, { passes: 14 },
+  { passes: 16, label: "Master Sergeant", capstone: true },
+]);
+
+/* ── Officer ──────────────────────────────────────────────────────── */
+fam("Lieutenant", "Officer", "bar", 1, "silver", 28, [
+  { passes: 18 }, { passes: 20 }, { passes: 22 },
+  { passes: 24, label: "First Lieutenant", capstone: true },
+]);
+fam("Captain", "Officer", "bar", 2, "silver", 32, [
+  { passes: 26 }, { passes: 28 }, { passes: 30 },
+  { passes: 32, label: "Staff Captain", capstone: true },
+]);
+fam("Major", "Officer", "star", 1, "silver", 36, [
+  { passes: 34 }, { passes: 36 }, { passes: 38 },
+  { passes: 40, label: "Field Major", capstone: true },
+]);
+fam("Commander", "Officer", "star", 2, "silver", 40, [
+  { passes: 43 }, { passes: 46 }, { passes: 49 },
+  { passes: 52, label: "Strike Commander", capstone: true },
+]);
+fam("Colonel", "Officer", "star", 3, "silver", 43, [
+  { passes: 55 }, { passes: 58 }, { passes: 61 },
+  { passes: 64, label: "Force Colonel", capstone: true },
+]);
+fam("Brigadier", "Officer", "wings", 1, "silver", 46, [
+  { passes: 68 }, { passes: 72 }, { passes: 76 },
+  { passes: 80, label: "Brigadier General", capstone: true },
+]);
+fam("General", "Officer", "laurel", 1, "gold", 48, [
+  { passes: 85, count: 1 },
+  { passes: 90, count: 2 },
+  { passes: 95, count: 3 },
+  { passes: 100, count: 5, label: "Five Star General", capstone: true },
+]);
+
+export const RANKS: RankDef[] = ladder;
+
+/* Highest rank whose EXP and skill gates are both met. (Passes rise strictly
+ * and skill never decreases along the ladder, so a single sweep works.) */
 export function rankIndexOf(passes: number, skill: number): number {
   let idx = 0;
   for (let i = 0; i < RANKS.length; i++) {

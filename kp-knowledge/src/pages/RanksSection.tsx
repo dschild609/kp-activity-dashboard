@@ -1,12 +1,13 @@
 // The training-rank ladder — a Halo 3-style leaderboard for tests. EXP =
-// passing attempts, Skill = avg best score ÷ 2 (1–50), and rank requires both.
+// passing attempts, Skill = avg best score ÷ 2 (1–50), and every one of the
+// 42 mastery ranks (Recruit → Five Star General) gates on both.
 
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import type { AuthState } from "../hooks/useAuth";
 import type { KnowledgeRankRecord } from "../types/knowledge";
 import { listRanks } from "../lib/knowledge";
-import { RANKS, rankIndexOf, rankName } from "../lib/ranks";
+import { RANKS, rankIndexOf, type RankGroup } from "../lib/ranks";
 import { RankBadge, SkillShield } from "../components/RankBadge";
 import { NoticeBox, Th } from "../components/ui";
 
@@ -36,8 +37,8 @@ export function RanksSection() {
     <>
       <p className="text-[13px] text-kp-text-muted mb-6">
         Every passed test earns EXP, and your average best score sets your <b>skill</b> (1–50).
-        Climbing the ladder takes both — grind alone and you'll stall in the enlisted ranks;
-        the officer grades demand scores.
+        Climbing the 42 mastery ranks takes both — grind alone and you'll stall in the enlisted
+        grades; the officer ladder demands scores.
       </p>
 
       {error && (
@@ -69,6 +70,7 @@ export function RanksSection() {
             <tbody>
               {ranked.map((r) => {
                 const me = user?.uid === r.uid;
+                const rk = RANKS[r.rankIndex];
                 return (
                   <tr
                     key={r.id}
@@ -76,13 +78,20 @@ export function RanksSection() {
                       me ? "shadow-[inset_3px_0_0_var(--color-kp-crimson)] bg-kp-crimson-soft/40" : ""
                     }`}
                   >
-                    <td className="px-4 py-2.5">
-                      <span className="flex items-center gap-2 font-semibold text-kp-text whitespace-nowrap">
-                        <RankBadge rankIndex={r.rankIndex} />
-                        {rankName(r.rankIndex)}
+                    <td className="px-4 py-2">
+                      <span className="flex items-center gap-2.5 whitespace-nowrap">
+                        <RankBadge rankIndex={r.rankIndex} size={36} />
+                        <span className="leading-tight">
+                          <span className="block font-semibold text-kp-text">{rk.name}</span>
+                          {rk.sub && (
+                            <span className="block font-mono text-[9.5px] uppercase tracking-[0.14em] text-kp-text-faint">
+                              {rk.sub}
+                            </span>
+                          )}
+                        </span>
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 font-semibold text-kp-text">
+                    <td className="px-4 py-2 font-semibold text-kp-text">
                       {r.userName}
                       {me && (
                         <span className="ml-2 align-middle text-[10px] font-bold tracking-wide text-kp-crimson">
@@ -90,11 +99,11 @@ export function RanksSection() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="px-4 py-2 text-right">
                       <SkillShield skill={r.skill} />
                     </td>
-                    <td className="px-4 py-2.5 text-right font-bold tabular-nums text-kp-navy">{r.passes}</td>
-                    <td className="px-4 py-2.5 text-right text-kp-text-muted tabular-nums">
+                    <td className="px-4 py-2 text-right font-bold tabular-nums text-kp-navy">{r.passes}</td>
+                    <td className="px-4 py-2 text-right text-kp-text-muted tabular-nums">
                       {r.avgBest.toFixed(1)}%
                     </td>
                   </tr>
@@ -105,23 +114,35 @@ export function RanksSection() {
         </div>
       )}
 
-      {/* The full ladder, Halo 3 style — what it takes to reach each rank. */}
-      <h2 className="kp-kicker mt-8 mb-3">The Ladder</h2>
-      <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-4 grid gap-x-6 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
-        {RANKS.map((rk, i) => (
-          <div key={rk.id} className="flex items-center gap-2.5">
-            <RankBadge rankIndex={i} size={24} />
-            <div className="min-w-0">
-              <div className="text-[13px] font-bold text-kp-text leading-tight">{rk.name}</div>
-              <div className="text-[11.5px] text-kp-text-faint leading-tight">
-                {rk.passes === 0 && rk.skill === 0
-                  ? "Report for duty"
-                  : `${rk.passes} pass${rk.passes === 1 ? "" : "es"}${rk.skill > 0 ? ` · skill ${rk.skill}` : ""}`}
-              </div>
-            </div>
+      {/* The full 42-rank ladder, grouped like the insignia chart. */}
+      {(["Enlisted", "Officer"] as RankGroup[]).map((group) => (
+        <div key={group}>
+          <h2 className="kp-kicker mt-8 mb-3">{group} ranks</h2>
+          <div className="grid gap-2.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))" }}>
+            {RANKS.map((rk, i) => ({ rk, i }))
+              .filter(({ rk }) => rk.group === group)
+              .map(({ rk, i }) => (
+                <div
+                  key={rk.id}
+                  className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs px-2 py-3 flex flex-col items-center text-center"
+                >
+                  <RankBadge rankIndex={i} size={58} />
+                  <div className="mt-1.5 text-[12px] font-bold text-kp-text leading-tight">{rk.name}</div>
+                  {rk.sub && (
+                    <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-kp-text-faint mt-0.5">
+                      {rk.sub}
+                    </div>
+                  )}
+                  <div className="text-[10.5px] text-kp-text-faint leading-tight mt-1">
+                    {rk.passes === 0
+                      ? "Report for duty"
+                      : `${rk.passes} pass${rk.passes === 1 ? "" : "es"}${rk.skill > 0 ? ` · skill ${rk.skill}` : ""}`}
+                  </div>
+                </div>
+              ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </>
   );
 }

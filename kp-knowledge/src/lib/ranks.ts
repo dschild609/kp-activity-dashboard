@@ -129,12 +129,15 @@ export function rankIndexOf(passes: number, skill: number): number {
 /* Derive a training record from a user's full attempt history.
  *
  * Skill grows like Halo's TrueSkill — it is EARNED through wins, never handed
- * out: starting from 1, each PASSING attempt (in order) pulls your skill 30%
+ * out: starting from 1, each PASSING attempt (in order) pulls your skill 12%
  * of the way toward that win's ceiling (its score ÷ 2). One perfect test gets
- * you ~15; the legendary 50 takes a sustained streak of ~13 near-perfect
- * wins. Your scores still set your ceiling — a 70% player converges to ~35
- * and can't out-grind the officer skill gates — and like Halo's Highest
- * Skill, it never goes back down (losses just don't help). */
+ * you ~6, two wins land you around 10, five straight 100%s ~24 — and the
+ * legendary 50 takes a ~36-win streak of near-perfect scores. Your scores
+ * still set your ceiling — a 70% player converges to ~35 and can't out-grind
+ * the officer skill gates — and like Halo's Highest Skill, it never goes back
+ * down (losses just don't help). */
+const SKILL_GROWTH = 0.12;
+
 export function computeTrainingRecord(
   attempts: Array<{ testId: string; score: number; passed: boolean; at?: number }>,
 ): { passes: number; testsTaken: number; avgBest: number; skill: number } {
@@ -150,7 +153,7 @@ export function computeTrainingRecord(
   for (const a of ordered) {
     if (!a.passed) continue;
     const ceiling = a.score / 2;
-    if (ceiling > s) s += 0.3 * (ceiling - s);
+    if (ceiling > s) s += SKILL_GROWTH * (ceiling - s);
   }
   const skill = testsTaken ? Math.min(50, Math.max(1, Math.round(s))) : 0;
   return { passes, testsTaken, avgBest: Math.round(avgBest * 10) / 10, skill };

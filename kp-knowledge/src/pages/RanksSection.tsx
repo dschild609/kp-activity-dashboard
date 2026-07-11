@@ -37,7 +37,7 @@ export function RanksSection() {
     <>
       <p className="text-[13px] text-kp-text-muted mb-6">
         Every passed test earns EXP, and your <b>skill</b> (1–50) grows with each win — every pass
-        pulls it toward half that test's score, so the legendary 50 takes a streak of near-perfect
+        pulls it toward half that test's score, so the legendary 50 takes dozens of near-perfect
         wins. Climbing the 42 mastery ranks takes both — grind alone and you'll stall in the
         enlisted grades; the officer ladder demands scores.
       </p>

@@ -9,8 +9,18 @@ export type AnswerKey = "A" | "B" | "C" | "D";
  * - agenda:  numbered list rows on cream
  * - bullets: 1-2 white cards with headed dash-bullet lists (the workhorse)
  * - steps:   horizontal numbered process circles
- * - image:   split layout — exhibit screenshot left, kicker/title/body right */
-export type SlideKind = "title" | "section" | "agenda" | "bullets" | "steps" | "image" | "video";
+ * - image:   split layout — exhibit screenshot left, kicker/title/body right
+ * - hotspot: interactive screenshot — the trainee must CLICK a target region
+ *            (e.g. "Click where the employee signs") to continue */
+export type SlideKind = "title" | "section" | "agenda" | "bullets" | "steps" | "image" | "video" | "hotspot";
+
+/* Hotspot target as fractions of the slide image (0-1, top-left origin) */
+export interface HotspotRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export interface SlideColumn {
   heading: string;
@@ -45,6 +55,11 @@ export interface KnowledgeSlide {
   /* Video slide source — a pasted YouTube/Loom/Vimeo link or the download
    * URL of a file uploaded to Storage. Parsed at render time. */
   videoUrl?: string | null;
+  /* Hotspot slides: the click target on the image (fractions of the image)
+   * and the find-it instruction shown to the trainee. `note` doubles as the
+   * explanation revealed after they hit the target. */
+  hotspot?: HotspotRect | null;
+  hotspotPrompt?: string | null;
 }
 
 /* The one place a slide record is assembled — every field present, no
@@ -65,6 +80,8 @@ export function makeSlide(partial: Partial<KnowledgeSlide> & { kind: SlideKind }
     imageLabel: partial.imageLabel ?? null,
     imagePosition: partial.imagePosition ?? "left",
     videoUrl: partial.videoUrl ?? null,
+    hotspot: partial.hotspot ?? null,
+    hotspotPrompt: partial.hotspotPrompt ?? null,
   };
 }
 

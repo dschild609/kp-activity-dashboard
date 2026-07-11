@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import type { KnowledgeSlide, SlideColumn, SlideStep } from "../types/knowledge";
 import { parseVideoUrl } from "../lib/video";
+import { HOTSPOT_FALLBACK_PROMPT } from "../lib/hotspot";
 
 /* Renders one training slide per the "KP Training Template" deck. The
  * palette is fixed (ink / crimson / cream from the template) regardless of
@@ -20,6 +21,7 @@ const HAIRLINE = "#e3e1d8";
 interface EditCtx {
   onChange: (next: KnowledgeSlide) => void;
   onSnip?: () => void;
+  onSetHotspot?: () => void;
 }
 
 export function SlideView({
@@ -27,6 +29,7 @@ export function SlideView({
   sectionNumber,
   onChange,
   onSnip,
+  onSetHotspot,
 }: {
   slide: KnowledgeSlide;
   /* 1-based ordinal among section slides, for the giant divider numeral */
@@ -35,8 +38,10 @@ export function SlideView({
   onChange?: (next: KnowledgeSlide) => void;
   /* Editable mode: opens the snip (crop) tool for the slide's image */
   onSnip?: () => void;
+  /* Editable mode: opens the click-target tool on a hotspot slide */
+  onSetHotspot?: () => void;
 }) {
-  const edit = onChange ? { onChange, onSnip } : undefined;
+  const edit = onChange ? { onChange, onSnip, onSetHotspot } : undefined;
   return (
     <div
       className="w-full aspect-[16/9] rounded-xl border border-kp-border shadow-2xs overflow-hidden relative select-text"
@@ -49,6 +54,117 @@ export function SlideView({
       {slide.kind === "steps" && <StepsSlide slide={slide} edit={edit} />}
       {slide.kind === "image" && <ImageSlide slide={slide} edit={edit} />}
       {slide.kind === "video" && <VideoSlide slide={slide} edit={edit} />}
+      {slide.kind === "hotspot" && <HotspotSlide slide={slide} edit={edit} />}
+    </div>
+  );
+}
+
+/* Editor/thumbnail representation of a hotspot slide. Shows the target as a
+ * dashed rectangle in EDIT mode only — the trainee must never see it (the
+ * interactive employee view lives in the deck, like the video player). */
+function HotspotSlide({ slide, edit }: { slide: KnowledgeSlide; edit?: EditCtx }) {
+  const c = edit?.onChange;
+  const hs = slide.hotspot;
+  return (
+    <div className="absolute inset-0 grid" style={{ gridTemplateColumns: "54% 46%" }}>
+      <div className="relative flex items-center justify-center" style={{ background: "#e7e5dd" }}>
+        {slide.imageUrl ? (
+          <>
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+              <span className="relative inline-block max-w-full max-h-full">
+                <img
+                  src={slide.imageUrl}
+                  alt="Hotspot exercise"
+                  className="max-w-full max-h-full object-contain bg-white"
+                  style={{ boxShadow: "0 2px 10px rgba(19,32,43,.18)" }}
+                />
+                {edit && hs && (
+                  <span
+                    className="absolute border-2 border-dashed pointer-events-none"
+                    style={{
+                      left: `${hs.x * 100}%`,
+                      top: `${hs.y * 100}%`,
+                      width: `${hs.w * 100}%`,
+                      height: `${hs.h * 100}%`,
+                      borderColor: CRIMSON,
+                      background: "rgba(148,0,42,.12)",
+                    }}
+                  />
+                )}
+              </span>
+            </div>
+            {edit && (
+              <div className="absolute top-2 left-2 flex gap-1.5">
+                {edit.onSetHotspot && (
+                  <button
+                    type="button"
+                    onClick={edit.onSetHotspot}
+                    className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
+                    style={{ color: hs ? INK : CRIMSON }}
+                    title="Draw the region the trainee must click"
+                  >
+                    🎯 {hs ? "move target" : "set target"}
+                  </button>
+                )}
+                {edit.onSnip && (
+                  <button
+                    type="button"
+                    onClick={edit.onSnip}
+                    className="px-2 py-1 rounded bg-white/90 hover:bg-white text-[11px] font-bold shadow"
+                    style={{ color: INK }}
+                    title="Crop to a part of this image"
+                  >
+                    ✂ snip
+                  </button>
+                )}
+              </div>
+            )}
+            {edit && !hs && (
+              <div
+                className="absolute bottom-2 left-2 right-2 text-center font-mono uppercase text-[10px] tracking-[0.14em] px-2 py-1 bg-white/80 rounded"
+                style={{ color: CRIMSON }}
+              >
+                No target yet — employees can't be gated until you set one
+              </div>
+            )}
+          </>
+        ) : (
+          <span className="font-mono uppercase text-[11px] tracking-[0.2em] px-3 py-1.5 bg-white/70" style={{ color: MUTED }}>
+            {edit ? "Pick an image below" : "No image selected"}
+          </span>
+        )}
+      </div>
+      <div className="px-8 py-8 flex flex-col justify-center overflow-y-auto">
+        <Kicker text={slide.kicker} color={CRIMSON} edit={edit} commit={(v) => c?.({ ...slide, kicker: v })} />
+        <h2 className="font-extrabold leading-tight tracking-[-0.02em]" style={{ fontSize: 26, color: INK }}>
+          <Txt value={slide.title} placeholder="Title" onCommit={c ? (v) => c({ ...slide, title: v }) : undefined} />
+        </h2>
+        <div
+          className="mt-4 rounded-lg px-3.5 py-3 text-[14px] font-semibold leading-snug"
+          style={{ background: "rgba(148,0,42,.08)", border: `1px solid rgba(148,0,42,.25)`, color: INK }}
+        >
+          🎯{" "}
+          <Txt
+            value={slide.hotspotPrompt ?? ""}
+            placeholder={HOTSPOT_FALLBACK_PROMPT}
+            onCommit={c ? (v) => c({ ...slide, hotspotPrompt: v || null }) : undefined}
+          />
+        </div>
+        {(slide.note || edit) && (
+          <div className="mt-4 pl-3.5 text-[13px] leading-relaxed" style={{ borderLeft: `3px solid ${CRIMSON}`, color: MUTED }}>
+            <Txt
+              value={slide.note ?? ""}
+              placeholder={edit ? "Explanation shown after they find it (optional)" : ""}
+              onCommit={c ? (v) => c({ ...slide, note: v || null }) : undefined}
+            />
+          </div>
+        )}
+        {edit && (
+          <div className="mt-3 font-mono uppercase text-[9.5px] tracking-[0.12em]" style={{ color: "#98a1a8" }}>
+            Interactive — trainees must click the target to continue
+          </div>
+        )}
+      </div>
     </div>
   );
 }

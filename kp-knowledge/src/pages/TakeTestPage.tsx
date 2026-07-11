@@ -18,6 +18,7 @@ import { usePoints } from "../hooks/usePoints";
 import { DEFAULT_SHIP_ID } from "../lib/ships";
 import { SlideView, sectionNumberAt } from "../components/SlideView";
 import { VideoPlayer } from "../components/VideoPlayer";
+import { HotspotSlidePlayer } from "../components/HotspotSlidePlayer";
 import { AsteroidsQuiz } from "../components/AsteroidsQuiz";
 import { parseVideoUrl } from "../lib/video";
 
@@ -587,15 +588,38 @@ function SlideDeck({
       return next;
     });
 
+  // Hotspot slides this user has already solved (same persistence pattern).
+  const foundKey = progressKey ? `${progressKey}-hotspots` : null;
+  const [found, setFound] = useState<Set<number>>(() => {
+    if (!foundKey) return new Set();
+    try {
+      return new Set<number>(JSON.parse(localStorage.getItem(foundKey) ?? "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  const markFound = (i: number) =>
+    setFound((prev) => {
+      if (prev.has(i)) return prev;
+      const next = new Set(prev).add(i);
+      if (foundKey) localStorage.setItem(foundKey, JSON.stringify([...next]));
+      return next;
+    });
+
   useEffect(() => {
     if (progressKey) localStorage.setItem(progressKey, String(index));
   }, [index, progressKey]);
 
   const slide = slides[index];
   const last = index === slides.length - 1;
-  // Lock advancing off a video slide until it's been watched the first time.
+  // Interactive hotspot slides need image + target to run the exercise.
+  const hotspotReady = slide.kind === "hotspot" && !!slide.imageUrl && !!slide.hotspot;
+  // Lock advancing off a video slide until it's been watched the first time,
+  // and off a hotspot slide until the target's been found (first view only).
   const videoNeedsWatch =
     !preview && slide.kind === "video" && !!slide.videoUrl && !watched.has(index);
+  const hotspotNeedsFind = !preview && hotspotReady && !found.has(index);
+  const gated = videoNeedsWatch || hotspotNeedsFind;
 
   // Fullscreen "present mode" for the slide stage. Arrow keys navigate while
   // fullscreen; the backdrop uses the app bg so the controls stay readable.
@@ -615,12 +639,12 @@ function SlideDeck({
   useEffect(() => {
     if (!isFs) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight" && !last && !videoNeedsWatch) setIndex((i) => Math.min(slides.length - 1, i + 1));
+      if (e.key === "ArrowRight" && !last && !gated) setIndex((i) => Math.min(slides.length - 1, i + 1));
       else if (e.key === "ArrowLeft") setIndex((i) => Math.max(0, i - 1));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isFs, last, videoNeedsWatch, slides.length]);
+  }, [isFs, last, gated, slides.length]);
 
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
@@ -678,6 +702,14 @@ function SlideDeck({
           watched={watched.has(index)}
           onWatched={() => markWatched(index)}
         />
+      ) : hotspotReady ? (
+        <HotspotSlidePlayer
+          key={index}
+          slide={slide}
+          gate={!preview}
+          found={found.has(index)}
+          onFound={() => markFound(index)}
+        />
       ) : (
         <ScaledSlide slide={slide} sectionNumber={sectionNumberAt(slides, index)} />
       )}
@@ -702,7 +734,7 @@ function SlideDeck({
           <button
             type="button"
             onClick={onStartQuiz}
-            disabled={videoNeedsWatch}
+            disabled={gated}
             className="px-5 py-2.5 bg-kp-crimson hover:bg-kp-crimson-hover text-white text-[14px] font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Start Quiz ({test.questionCount} questions)
@@ -710,7 +742,7 @@ function SlideDeck({
           <button
             type="button"
             onClick={onStartGame}
-            disabled={videoNeedsWatch}
+            disabled={gated}
             title="Answer by playing Asteroids"
             className="px-4 py-2.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[14px] font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -721,7 +753,7 @@ function SlideDeck({
           <button
             type="button"
             onClick={() => setIndex((i) => Math.min(slides.length - 1, i + 1))}
-            disabled={videoNeedsWatch}
+            disabled={gated}
             className="px-5 py-2.5 bg-kp-navy hover:bg-kp-navy-hover text-white text-[14px] font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Next →

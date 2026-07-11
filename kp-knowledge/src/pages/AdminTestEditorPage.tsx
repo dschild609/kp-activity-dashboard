@@ -16,6 +16,7 @@ import {
 } from "../types/knowledge";
 import { SlideView, move, sectionNumberAt } from "../components/SlideView";
 import { SnipModal } from "../components/SnipModal";
+import { HotspotModal } from "../components/HotspotModal";
 import { AssignmentEditor } from "../components/AssignmentEditor";
 import { Field, NoticeBox, Pill, SmallButton } from "../components/ui";
 import {
@@ -458,6 +459,7 @@ const SLIDE_LAYOUTS: Array<{
   { value: "steps", kind: "steps", label: "Process steps" },
   { value: "image", kind: "image", imagePosition: "left", label: "Screenshot — text beside" },
   { value: "image-top", kind: "image", imagePosition: "top", label: "Screenshot — text below" },
+  { value: "hotspot", kind: "hotspot", label: "Hotspot — click the target" },
   { value: "video", kind: "video", label: "Video" },
 ];
 
@@ -507,6 +509,8 @@ function convertSlide(slide: KnowledgeSlide, kind: SlideKind): KnowledgeSlide {
     imageLabel: slide.imageLabel ?? null,
     imagePosition: slide.imagePosition,
     videoUrl: slide.videoUrl ?? null,
+    hotspot: slide.hotspot ?? null,
+    hotspotPrompt: slide.hotspotPrompt ?? null,
   };
 
   switch (kind) {
@@ -534,6 +538,9 @@ function convertSlide(slide: KnowledgeSlide, kind: SlideKind): KnowledgeSlide {
       };
     case "image":
       return { ...base, body: lines.join(" ") || null };
+    case "hotspot":
+      // Keep the image + any target; a body paragraph becomes the prompt.
+      return { ...base, hotspotPrompt: slide.hotspotPrompt ?? lines[0] ?? null };
     case "video":
       return { ...base, subtitle: lines[0] ?? null };
   }
@@ -690,6 +697,7 @@ function SlideWorkbench({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [snipping, setSnipping] = useState(false);
+  const [targeting, setTargeting] = useState(false);
   const index = Math.min(selected, Math.max(slides.length - 1, 0));
   const slide = slides[index];
 
@@ -707,7 +715,8 @@ function SlideWorkbench({
     onAssetsAdded([asset]);
     onChange(
       slides.map((s, j) =>
-        j === index ? { ...s, imageUrl: asset.url, imageLabel: asset.name } : s
+        // The snip replaces the image, so any hotspot target no longer lines up
+        j === index ? { ...s, imageUrl: asset.url, imageLabel: asset.name, hotspot: null } : s
       )
     );
     setSnipping(false);
@@ -728,9 +737,11 @@ function SlideWorkbench({
             j === index
               ? {
                   ...s,
-                  kind: "image" as const,
+                  // Hotspot slides keep their kind; anything else becomes an image slide
+                  kind: s.kind === "hotspot" ? s.kind : ("image" as const),
                   imageUrl: a.url,
                   imageLabel: added.length > 1 ? `${a.name} — page ${a.page}` : a.name,
+                  hotspot: null,
                 }
               : s
           )
@@ -829,7 +840,11 @@ function SlideWorkbench({
                 ...slide,
                 imageUrl: url,
                 imageLabel: asset ? `${asset.name} — page ${asset.page}` : null,
-                ...(url && slide.kind !== "image" ? { kind: "image" as const } : null),
+                // A different image invalidates a hotspot target's coordinates
+                hotspot: url === slide.imageUrl ? (slide.hotspot ?? null) : null,
+                ...(url && slide.kind !== "image" && slide.kind !== "hotspot"
+                  ? { kind: "image" as const }
+                  : null),
               });
             }}
             className="focus-kp bg-kp-surface border border-kp-border rounded-lg px-2 py-1.5 text-[12.5px] max-w-[220px]"
@@ -897,6 +912,9 @@ function SlideWorkbench({
           sectionNumber={sectionNumberAt(slides, index)}
           onChange={update}
           onSnip={slide.imageUrl ? () => setSnipping(true) : undefined}
+          onSetHotspot={
+            slide.kind === "hotspot" && slide.imageUrl ? () => setTargeting(true) : undefined
+          }
         />
 
         {snipping && slide.imageUrl && (
@@ -904,6 +922,18 @@ function SlideWorkbench({
             imageUrl={slide.imageUrl}
             onCancel={() => setSnipping(false)}
             onConfirm={handleSnip}
+          />
+        )}
+
+        {targeting && slide.imageUrl && (
+          <HotspotModal
+            imageUrl={slide.imageUrl}
+            initial={slide.hotspot ?? null}
+            onCancel={() => setTargeting(false)}
+            onConfirm={(target) => {
+              update({ ...slide, hotspot: target });
+              setTargeting(false);
+            }}
           />
         )}
 

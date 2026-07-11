@@ -52,7 +52,7 @@ export const TEST_SCHEMA = {
         properties: {
           kind: {
             type: "string",
-            enum: ["title", "section", "agenda", "bullets", "steps", "image"],
+            enum: ["title", "section", "agenda", "bullets", "steps", "image", "hotspot"],
             description: "Which template layout this slide uses",
           },
           kicker: {
@@ -98,7 +98,7 @@ export const TEST_SCHEMA = {
           image: {
             type: ["object", "null"],
             description:
-              "Exhibit page displayed on this slide (1-based numbers matching the exhibits provided) — image slides only, null otherwise",
+              "Exhibit page displayed on this slide (1-based numbers matching the exhibits provided) — image and hotspot slides only, null otherwise",
             properties: {
               exhibit: { type: "integer", description: "1-based exhibit number" },
               page: { type: "integer", description: "1-based page within that exhibit" },
@@ -119,10 +119,28 @@ export const TEST_SCHEMA = {
             required: ["exhibit", "page", "region"],
             additionalProperties: false,
           },
+          hotspotPrompt: {
+            type: ["string", "null"],
+            description:
+              "Hotspot slides only: the short imperative find-it instruction shown to the trainee (e.g. 'Click where the employee signs the form') — null otherwise",
+          },
+          hotspot: {
+            type: ["object", "null"],
+            description:
+              "Hotspot slides only: the target the trainee must click, in PIXEL coordinates of the referenced page image (same pixel space as image.region) — a tight box around the element plus ~10-20px margin. null otherwise",
+            properties: {
+              x: { type: "integer", description: "Left edge, px" },
+              y: { type: "integer", description: "Top edge, px" },
+              width: { type: "integer", description: "Target width, px" },
+              height: { type: "integer", description: "Target height, px" },
+            },
+            required: ["x", "y", "width", "height"],
+            additionalProperties: false,
+          },
         },
         required: [
           "kind", "kicker", "title", "subtitle", "items", "columns", "steps",
-          "body", "note", "imagePosition", "image",
+          "body", "note", "imagePosition", "image", "hotspotPrompt", "hotspot",
         ],
         additionalProperties: false,
       },
@@ -146,18 +164,19 @@ const SYSTEM_PROMPT = `You create internal training material for KP Staffing, a 
 
 THE SLIDE DECK teaches the document's content to staff. Cover ALL substantive content — policies, procedures, rules, numbers, deadlines — in teaching order, in plain language a busy employee can absorb. Typically 8-18 slides depending on the document's length.
 
-CHOOSING LAYOUTS: you decide the layout for every slide, and the decision should be driven by the shape of that slide's content — never by habit. Before writing each slide, ask: is this a sequence (steps)? a comparison or pairing (two-column bullets)? a list of topics (agenda)? a form or visual to look at (image)? a topic change (section)? Only content that is genuinely "several parallel facts about one topic" belongs on a single-column bullets slide. A deck where most content slides are single-column bullet lists is a failure of layout choice — real documents contain processes, pairings, and visuals, and the deck should reflect that. Six layouts are available:
+CHOOSING LAYOUTS: you decide the layout for every slide, and the decision should be driven by the shape of that slide's content — never by habit. Before writing each slide, ask: is this a sequence (steps)? a comparison or pairing (two-column bullets)? a list of topics (agenda)? a form or visual to look at (image)? a topic change (section)? Only content that is genuinely "several parallel facts about one topic" belongs on a single-column bullets slide. A deck where most content slides are single-column bullet lists is a failure of layout choice — real documents contain processes, pairings, and visuals, and the deck should reflect that. Seven layouts are available:
 
 - "title": the cover. Exactly ONE, always the FIRST slide. kicker = the training series or topic in a few words (e.g. "NEW HIRE TRAINING"); title = the deck's name; subtitle = one welcoming sentence about what the training covers.
 - "agenda": the second slide. items = 3-6 rows summarizing what the training covers, in order. kicker "AGENDA", title like "What to Expect".
 - "section": a divider that opens each major section of a longer deck. kicker = "SECTION ONE", "SECTION TWO", ... in sequence; title = the section name; subtitle = one sentence on what the section covers. Use sections only when the material has 2+ genuinely distinct parts; skip them for short single-topic decks.
 - "bullets": the workhorse content slide. columns = 1 column normally; 2 columns when the content pairs naturally (do/don't, what you'll do/who to ask, requirements/exceptions). Each column has a heading and 3-6 bullets. Write bullets as "Lead — description" when there's a natural lead-in term (it renders bold). No column heading repetition of the slide title.
 - "steps": a numbered process with 2-4 sequential steps (apply → orientation → assignment → check-in). Each step: short title + one-two sentence description. Use for any procedure with a clear order.
-- "image": a screenshot slide. Set imagePosition per the image's shape: "left" (side-by-side — the image fills the left half, kicker/title/body on the right) when the image is roughly page-shaped (taller than wide, or square); "top" (horizontal — the image spans the top ~60% with the text in a band below) when the image is WIDE and SHORT — a single form row, a signature line, a table header. A wide crop on a side-by-side slide wastes most of the pane. Include a short body paragraph explaining what the viewer is looking at, and optionally a note (a short callout, e.g. a common mistake or where to sign). Only image slides carry an "image" reference and an imagePosition.
+- "image": a screenshot slide. Set imagePosition per the image's shape: "left" (side-by-side — the image fills the left half, kicker/title/body on the right) when the image is roughly page-shaped (taller than wide, or square); "top" (horizontal — the image spans the top ~60% with the text in a band below) when the image is WIDE and SHORT — a single form row, a signature line, a table header. A wide crop on a side-by-side slide wastes most of the pane. Include a short body paragraph explaining what the viewer is looking at, and optionally a note (a short callout, e.g. a common mistake or where to sign). Only image and hotspot slides carry an "image" reference; only image slides use imagePosition.
+- "hotspot": an INTERACTIVE find-it exercise — the trainee sees the screenshot with your hotspotPrompt instruction and must CLICK the right spot before the deck lets them continue. Use it when an exhibit clearly shows a specific findable element that the document tells people to locate, sign, check, or fill (a signature line, a date box, a checkbox, a field). Set hotspotPrompt to a short imperative instruction ("Click where the employee signs and dates the form"); set hotspot to the PIXEL rectangle of that element on the page (tight box plus ~10-20px margin — the same pixel space as image.region); set note to a one-sentence explanation shown after they find it (why the spot matters or a common mistake). A region crop is allowed but must fully CONTAIN the hotspot — when in doubt use region: null so there's a whole page to hunt through. Use 1-3 hotspot slides per deck at most, only where a precise target genuinely exists, and NEVER invent a target you cannot see in the exhibit image.
 
 Layout discipline: every slide sets exactly the fields its kind needs and null for the rest. Don't pad the deck — no "questions?" slide, no closing slide, no bullet that restates the slide title.
 
-EXHIBIT SCREENSHOTS: when exhibits are provided (e.g. a blank W-4 form), use "image" slides to walk through them. Place image slides at the point in the teaching order where the form section comes up. Don't force every page onto a slide, and don't repeat the same view on many slides.
+EXHIBIT SCREENSHOTS: when exhibits are provided (e.g. a blank W-4 form), use "image" slides to walk through them. Place image slides at the point in the teaching order where the form section comes up. Don't force every page onto a slide, and don't repeat the same view on many slides. When the document teaches WHERE on a form to do something, prefer one "hotspot" slide (an active exercise) over repeating the same view as another static image slide.
 
 CROPPING — show the PART of the page the slide is about: each page image's pixel dimensions are given with it. When a slide discusses one section of a page (one step of a form, one signature block, one table), set image.region to the pixel rectangle containing just that section, with a comfortable margin (~20-30px) around it so nothing is clipped mid-line; the region should span the page's full printed width unless the relevant content is clearly narrower. Use region: null only when the slide is genuinely about the whole page (an overview or orientation slide). A crop that shows exactly what the bullets describe teaches far better than a full page where the viewer must hunt for the relevant part.
 
@@ -175,7 +194,7 @@ type ContentBlock =
     };
 
 interface GeneratedSlide {
-  kind: "title" | "section" | "agenda" | "bullets" | "steps" | "image";
+  kind: "title" | "section" | "agenda" | "bullets" | "steps" | "image" | "hotspot";
   kicker: string | null;
   title: string;
   subtitle: string | null;
@@ -190,6 +209,8 @@ interface GeneratedSlide {
     page: number;
     region: { x: number; y: number; width: number; height: number } | null;
   } | null;
+  hotspotPrompt: string | null;
+  hotspot: { x: number; y: number; width: number; height: number } | null;
 }
 
 export const generateKnowledgeTest = managerEndpoint(
@@ -305,7 +326,7 @@ export const generateKnowledgeTest = managerEndpoint(
     content.push({
       type: "text",
       text: exhibitList.length
-        ? "Create the training slides and quiz. Use exhibit screenshots on the slides where they help (via the image field, using the exhibit/page numbers above)."
+        ? "Create the training slides and quiz. Use exhibit screenshots on the slides where they help (via the image field, using the exhibit/page numbers above), and add a hotspot slide where the material teaches finding a specific spot on a form."
         : "Create the training slides and quiz.",
     });
 
@@ -341,41 +362,86 @@ export const generateKnowledgeTest = managerEndpoint(
       generated.slides.map(async (s, si) => {
         let imageUrl: string | null = null;
         let imageLabel: string | null = null;
+        let hotspot: { x: number; y: number; w: number; h: number } | null = null;
         const pageInfo = s.image ? pages[s.image.exhibit - 1]?.[s.image.page - 1] : undefined;
-        if (s.image && pageInfo) {
+        if (s.image && pageInfo && pageInfo.width > 0 && pageInfo.height > 0) {
           const ex = exhibitList[s.image.exhibit - 1];
           imageUrl = pageInfo.url;
           imageLabel = `${ex.name} — page ${s.image.page}`;
+
+          // Clamp the hotspot target (page pixel space) up front.
+          let hsPx: { x: number; y: number; w: number; h: number } | null = null;
+          if (s.kind === "hotspot" && s.hotspot) {
+            const hx = Math.max(0, Math.min(s.hotspot.x, pageInfo.width - 2));
+            const hy = Math.max(0, Math.min(s.hotspot.y, pageInfo.height - 2));
+            hsPx = {
+              x: hx,
+              y: hy,
+              w: Math.max(4, Math.min(s.hotspot.width, pageInfo.width - hx)),
+              h: Math.max(4, Math.min(s.hotspot.height, pageInfo.height - hy)),
+            };
+          }
+
+          // Clamp the crop region; ignore degenerate or near-full-page crops.
+          let crop: { x: number; y: number; w: number; h: number } | null = null;
           const r = s.image.region;
-          if (r && pageInfo.width > 0 && pageInfo.height > 0) {
-            // Clamp to page bounds; ignore degenerate or near-full-page crops
+          if (r) {
             const x = Math.max(0, Math.min(r.x, pageInfo.width - 1));
             const y = Math.max(0, Math.min(r.y, pageInfo.height - 1));
             const w = Math.max(1, Math.min(r.width, pageInfo.width - x));
             const h = Math.max(1, Math.min(r.height, pageInfo.height - y));
             const nearFull = w * h > 0.9 * pageInfo.width * pageInfo.height;
-            if (!nearFull && w >= 60 && h >= 40) {
-              try {
-                const cropBuffer = await sharp(pageInfo.buffer)
-                  .extract({ left: x, top: y, width: w, height: h })
-                  .jpeg({ quality: 88 })
-                  .toBuffer();
-                const cropUrl = await uploadJpeg(
-                  `knowledgeAssets/${testRef.id}/crop-s${si + 1}-ex${s.image.exhibit}-p${s.image.page}.jpg`,
-                  cropBuffer
-                );
-                imageUrl = cropUrl;
-                imageLabel = `${ex.name} — page ${s.image.page} (detail)`;
-                assets.push({ name: `${ex.name} (detail, slide ${si + 1})`, page: s.image.page, url: cropUrl });
-              } catch (e) {
-                // Fall back to the full page rather than failing the run
-                console.error("crop failed, using full page", e);
-              }
+            if (!nearFull && w >= 60 && h >= 40) crop = { x, y, w, h };
+          }
+          // The exercise needs its target fully visible — drop any crop that
+          // would cut the hotspot off.
+          if (crop && hsPx) {
+            const inside =
+              hsPx.x >= crop.x &&
+              hsPx.y >= crop.y &&
+              hsPx.x + hsPx.w <= crop.x + crop.w &&
+              hsPx.y + hsPx.h <= crop.y + crop.h;
+            if (!inside) crop = null;
+          }
+
+          if (crop) {
+            try {
+              const cropBuffer = await sharp(pageInfo.buffer)
+                .extract({ left: crop.x, top: crop.y, width: crop.w, height: crop.h })
+                .jpeg({ quality: 88 })
+                .toBuffer();
+              const cropUrl = await uploadJpeg(
+                `knowledgeAssets/${testRef.id}/crop-s${si + 1}-ex${s.image.exhibit}-p${s.image.page}.jpg`,
+                cropBuffer
+              );
+              imageUrl = cropUrl;
+              imageLabel = `${ex.name} — page ${s.image.page} (detail)`;
+              assets.push({ name: `${ex.name} (detail, slide ${si + 1})`, page: s.image.page, url: cropUrl });
+            } catch (e) {
+              // Fall back to the full page rather than failing the run
+              console.error("crop failed, using full page", e);
+              crop = null;
             }
           }
+
+          // Normalize the target to fractions of whatever image the slide
+          // actually shows (the crop when applied, else the full page).
+          if (hsPx) {
+            const base = crop ?? { x: 0, y: 0, w: pageInfo.width, h: pageInfo.height };
+            const f = (n: number) => Math.round(n * 10000) / 10000;
+            hotspot = {
+              x: f((hsPx.x - base.x) / base.w),
+              y: f((hsPx.y - base.y) / base.h),
+              w: f(hsPx.w / base.w),
+              h: f(hsPx.h / base.h),
+            };
+          }
         }
+        // A hotspot slide without a usable image + target can't run the
+        // exercise — keep its content as a plain screenshot slide instead.
+        const kind = s.kind === "hotspot" && (!imageUrl || !hotspot) ? "image" : s.kind;
         return {
-          kind: s.kind,
+          kind,
           imagePosition: s.imagePosition ?? "left",
           kicker: s.kicker ?? null,
           title: s.title,
@@ -387,6 +453,8 @@ export const generateKnowledgeTest = managerEndpoint(
           note: s.note ?? null,
           imageUrl,
           imageLabel,
+          hotspot,
+          hotspotPrompt: s.hotspotPrompt ?? null,
         };
       })
     );

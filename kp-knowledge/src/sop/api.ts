@@ -82,6 +82,13 @@ export function publishSop(id: string): Promise<{ ok: boolean }> {
   return req(`/sops/${id}/publish`, { method: "POST" });
 }
 
+// Render the .docx exactly as publish would (nothing pushed to Drive, status
+// unchanged) and return a short-lived download URL — lets the reviewer check
+// the document and keep editing before committing.
+export function previewSop(id: string): Promise<{ url: string }> {
+  return req(`/sops/${id}/preview`, { method: "POST" });
+}
+
 // Mark the SOP reviewed & still-accurate now (clears "Needs review" without
 // re-publishing). Returns the new lastVerifiedAt / nextReviewAt.
 export function verifySop(

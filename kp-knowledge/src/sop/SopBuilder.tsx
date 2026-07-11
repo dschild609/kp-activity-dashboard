@@ -11,6 +11,7 @@ import {
   getSop,
   listSops,
   patchSop,
+  previewSop,
   publishSop,
   verifySop,
 } from "./api";
@@ -224,6 +225,7 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
 
   const [reviewed, setReviewed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -316,8 +318,8 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
     setMessage("New frame captured — blur/marks were cleared; re-check, then Save.");
   }
 
-  async function save() {
-    if (!meta) return;
+  async function save(): Promise<boolean> {
+    if (!meta) return false;
     setSaving(true);
     setActionError(null);
     try {
@@ -330,15 +332,38 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
           blurBoxes: s.blurBoxes,
           annotations: s.annotations ?? [],
           crop: s.crop ?? null,
-          focus: s.focus ?? true,
+          focus: s.focus ?? false, // auto-zoom is opt-in (off by default)
         })),
       });
       setDirty(false);
       setMessage("Saved");
+      return true;
+    } catch (e) {
+      setActionError((e as Error).message);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Render the .docx exactly as publish would (nothing to Drive) and download
+  // it — saves first so the preview reflects the edits on screen.
+  async function preview() {
+    setPreviewing(true);
+    setActionError(null);
+    setMessage(null);
+    try {
+      if (dirty && !(await save())) return;
+      const { url } = await previewSop(sopId);
+      const a = document.createElement("a");
+      a.href = url;
+      a.rel = "noopener";
+      a.click();
+      setMessage("Preview downloaded — check it, keep editing, publish when ready.");
     } catch (e) {
       setActionError((e as Error).message);
     } finally {
-      setSaving(false);
+      setPreviewing(false);
     }
   }
 
@@ -574,10 +599,12 @@ function ReviewView({ sopId, onBack }: { sopId: string; onBack: () => void }) {
               <PublishBar
                 dirty={dirty}
                 saving={saving}
+                previewing={previewing}
                 publishing={publishing}
                 reviewed={reviewed}
                 onReviewedChange={setReviewed}
                 onSave={save}
+                onPreview={preview}
                 onPublish={publish}
                 message={message}
                 error={actionError}

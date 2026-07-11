@@ -1,10 +1,12 @@
 interface PublishBarProps {
   dirty: boolean;
   saving: boolean;
+  previewing: boolean;
   publishing: boolean;
   reviewed: boolean;
   onReviewedChange: (v: boolean) => void;
   onSave: () => void;
+  onPreview: () => void;
   onPublish: () => void;
   message: string | null;
   error: string | null;
@@ -15,10 +17,12 @@ interface PublishBarProps {
 export function PublishBar({
   dirty,
   saving,
+  previewing,
   publishing,
   reviewed,
   onReviewedChange,
   onSave,
+  onPreview,
   onPublish,
   message,
   error,
@@ -55,6 +59,15 @@ export function PublishBar({
             className="px-4 py-2 text-[13px] font-semibold text-kp-text border border-kp-border rounded-lg hover:bg-kp-surface-alt disabled:opacity-40 disabled:cursor-default"
           >
             {saving ? "Saving…" : dirty ? "Save changes" : "Saved"}
+          </button>
+          <button
+            type="button"
+            onClick={onPreview}
+            disabled={previewing || saving || publishing}
+            title="Download the Word doc exactly as publishing would produce it — nothing goes to Drive"
+            className="px-4 py-2 text-[13px] font-semibold text-kp-navy border border-kp-navy/40 rounded-lg hover:bg-kp-surface-alt disabled:opacity-40 disabled:cursor-default"
+          >
+            {previewing ? "Rendering…" : "👁 Preview doc"}
           </button>
           <button
             type="button"

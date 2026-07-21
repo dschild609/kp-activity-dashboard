@@ -23,6 +23,13 @@ import {
 
 const MAX_EXHIBITS = 5;
 
+// The synthetic exhibit that carries screenshots pulled out of the .docx
+// itself (as opposed to separately-uploaded exhibit files).
+const EMBEDDED_EXHIBIT_NAME = "Screenshots from the document";
+const EMBEDDED_MIN_AREA = 40_000; // px² — drops inline icons, bullets, rules
+const EMBEDDED_MAX_DIM = 2048; // cap the long edge (token + storage control)
+const EMBEDDED_MAX_IMAGES = 12; // cap screenshots pulled from one document
+
 // Exhibits arrive pre-rendered from the client: each page as a base64 JPEG
 // (the browser rasterizes PDFs with pdf.js; plain images come as one page).
 interface ExhibitPageIn {
@@ -32,6 +39,92 @@ interface ExhibitPageIn {
 interface ExhibitIn {
   name: string;
   pages: ExhibitPageIn[];
+}
+
+// Word HTML → readable plain text, preserving the structure the raw-text
+// extractor throws away (headings/paragraphs as lines, list items as bullets,
+// table cells spaced) so the model reads a cleaner document.
+function wordHtmlToText(html: string): string {
+  return html
+    .replace(/<li[^>]*>/gi, "\n• ")
+    .replace(/<\/(p|h[1-6]|div|tr|li)>/gi, "\n")
+    .replace(/<\/(td|th)>/gi, "   ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;|&rsquo;|&lsquo;/g, "'")
+    .replace(/&quot;|&rdquo;|&ldquo;/g, '"')
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+interface DocExtract {
+  text: string; // with inline [SCREENSHOT N] markers at each kept image's spot
+  screenshots: string[]; // base64 JPEGs, in document order (page N = index N-1)
+  dropped: number; // kept-eligible screenshots left out by the per-doc cap
+}
+
+/* Pull embedded screenshots out of a .docx in reading order, weaving a
+ * [SCREENSHOT N] marker into the text at each one's position so the model
+ * knows which step every screenshot illustrates. Decorative images (tiny
+ * icons, repeated logos deduped to one) are filtered out; the survivors are
+ * normalized to bounded JPEGs matching the exhibit-page contract. */
+async function extractDocWithScreenshots(buffer: Buffer): Promise<DocExtract> {
+  const captured: string[] = []; // base64 source bytes, deduped, in order
+  const seen = new Map<string, number>();
+
+  const { value: html } = await mammoth.convertToHtml(
+    { buffer },
+    {
+      convertImage: mammoth.images.imgElement(async (el) => {
+        const b64 = await el.read("base64");
+        let idx = seen.get(b64);
+        if (idx === undefined) {
+          idx = captured.length;
+          captured.push(b64);
+          seen.set(b64, idx);
+        }
+        return { src: `docimg://${idx}` };
+      }),
+    }
+  );
+
+  // Normalize each captured image; keep real screenshots, assign them
+  // sequential 1-based page numbers, and remember which were dropped.
+  const keptPage = new Map<number, number>();
+  const screenshots: string[] = [];
+  let dropped = 0;
+  for (let i = 0; i < captured.length; i++) {
+    try {
+      const src = Buffer.from(captured[i], "base64");
+      const meta = await sharp(src).metadata();
+      if ((meta.width ?? 0) * (meta.height ?? 0) < EMBEDDED_MIN_AREA) continue; // decorative
+      if (screenshots.length >= EMBEDDED_MAX_IMAGES) {
+        dropped++;
+        continue;
+      }
+      const jpeg = await sharp(src)
+        .flatten({ background: "#ffffff" }) // screenshots are opaque; be safe on PNGs
+        .resize({ width: EMBEDDED_MAX_DIM, height: EMBEDDED_MAX_DIM, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 88 })
+        .toBuffer();
+      keptPage.set(i, screenshots.length + 1);
+      screenshots.push(jpeg.toString("base64"));
+    } catch {
+      // Unreadable (EMF/WMF vector, corrupt) — skip, no marker
+    }
+  }
+
+  // Swap each image placeholder for its marker (or remove it if dropped).
+  const marked = html.replace(/<img[^>]*src="docimg:\/\/(\d+)"[^>]*\/?>/g, (_m, n) => {
+    const page = keptPage.get(Number(n));
+    return page ? `\n[SCREENSHOT ${page}]\n` : "";
+  });
+  return { text: wordHtmlToText(marked), screenshots, dropped };
 }
 
 // Structured output schema — Claude must return exactly this shape.
@@ -178,6 +271,8 @@ Layout discipline: every slide sets exactly the fields its kind needs and null f
 
 EXHIBIT SCREENSHOTS: when exhibits are provided (e.g. a blank W-4 form), use "image" slides to walk through them. Place image slides at the point in the teaching order where the form section comes up. Don't force every page onto a slide, and don't repeat the same view on many slides. When the document teaches WHERE on a form to do something, prefer one "hotspot" slide (an active exercise) over repeating the same view as another static image slide.
 
+EMBEDDED SCREENSHOTS: if the source document itself contained screenshots, they are supplied as the exhibit named "${EMBEDDED_EXHIBIT_NAME}", and the document text carries [SCREENSHOT N] markers showing exactly where each one appeared — screenshot N is page N of that exhibit. These are real, in-context screenshots of the actual system the document is teaching, so they are your BEST material: for each meaningful marker, build an image slide (or a hotspot slide, if that step is about clicking/finding a specific spot) at that point in the teaching order, setting image.exhibit to that exhibit's number and image.page to N. Follow the author's placement — a screenshot sitting under a step illustrates that step. Skip a marker only when the screenshot is purely decorative (a header banner or logo) or would just repeat the previous slide's view. Never reference a [SCREENSHOT N] whose page you were not given.
+
 CROPPING — show the PART of the page the slide is about: each page image's pixel dimensions are given with it. When a slide discusses one section of a page (one step of a form, one signature block, one table), set image.region to the pixel rectangle containing just that section, with a comfortable margin (~20-30px) around it so nothing is clipped mid-line; the region should span the page's full printed width unless the relevant content is clearly narrower. Use region: null only when the slide is genuinely about the whole page (an overview or orientation slide). A crop that shows exactly what the bullets describe teaches far better than a full page where the viewer must hunt for the relevant part.
 
 THE QUIZ: 10-15 questions (fewer only if the document is genuinely thin) testing understanding of the slide content. Mix multiple-choice (MC, 3-4 options) and true/false (TF). Every answer must be verifiable from the slides. Wrong options should be plausible — the kinds of mistakes someone who skimmed would make — never joke answers. TF questions use optionA "True" and optionB "False" with optionC/optionD null. Spread questions across the whole document, not just the start.
@@ -224,7 +319,7 @@ interface GeneratedSlide {
 export const generateKnowledgeTest = managerEndpoint(
   { secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 540, memory: "1GiB" },
   async (req, res, auth) => {
-    const { filename, data, exhibits } = req.body ?? {};
+    const { filename, data, exhibits, includeScreenshots } = req.body ?? {};
     if (typeof data !== "string" || !data) {
       res.status(400).json({ ok: false, error: "Missing base64 'data' field" });
       return;
@@ -233,6 +328,8 @@ export const generateKnowledgeTest = managerEndpoint(
       res.status(400).json({ ok: false, error: "The source document must be a .docx file" });
       return;
     }
+    // On by default: pull the document's own screenshots onto slides.
+    const wantScreenshots = includeScreenshots !== false;
 
     // Validate exhibits
     const exhibitList: ExhibitIn[] = Array.isArray(exhibits) ? exhibits : [];
@@ -252,19 +349,45 @@ export const generateKnowledgeTest = managerEndpoint(
       }
     }
 
-    // Extract text from the Word doc
+    // Extract text from the Word doc — and, by default, the screenshots
+    // embedded in it, which become a synthetic exhibit ("Screenshots from the
+    // document") so they flow through the same upload/crop/hotspot/slide path
+    // as uploaded exhibits. Position markers in the text tell the model which
+    // step each one illustrates.
     let text: string;
+    let embeddedScreens: string[] = [];
     try {
       const buffer = Buffer.from(data, "base64");
       if (buffer.length > 15 * 1024 * 1024) {
         res.status(400).json({ ok: false, error: "Source document too large (15MB max)" });
         return;
       }
-      const result = await mammoth.extractRawText({ buffer });
-      text = result.value.trim();
+      if (wantScreenshots) {
+        const extracted = await extractDocWithScreenshots(buffer);
+        text = extracted.text;
+        embeddedScreens = extracted.screenshots;
+        if (extracted.dropped > 0) {
+          console.log(`generateKnowledgeTest: dropped ${extracted.dropped} screenshot(s) over the ${EMBEDDED_MAX_IMAGES}-image cap`);
+        }
+      } else {
+        text = (await mammoth.extractRawText({ buffer })).value.trim();
+      }
     } catch (e) {
       res.status(400).json({ ok: false, error: `Couldn't read the Word document: ${(e as Error).message}` });
       return;
+    }
+
+    // Prepend the embedded screenshots as exhibit 1, trimmed to the shared
+    // page budget (uploaded exhibits keep their room).
+    if (embeddedScreens.length > 0) {
+      const budget = Math.max(0, MAX_PAGES - exhibitList.reduce((n, e) => n + e.pages.length, 0));
+      const pages = embeddedScreens.slice(0, budget);
+      if (pages.length > 0) {
+        exhibitList.unshift({
+          name: EMBEDDED_EXHIBIT_NAME,
+          pages: pages.map((imageBase64, i) => ({ pageNumber: i + 1, imageBase64 })),
+        });
+      }
     }
     if (text.length < 200) {
       res.status(400).json({ ok: false, error: "Document has too little text to build a test from" });
@@ -331,11 +454,14 @@ export const generateKnowledgeTest = managerEndpoint(
         });
       });
     });
+    const hasEmbedded = exhibitList[0]?.name === EMBEDDED_EXHIBIT_NAME;
     content.push({
       type: "text",
-      text: exhibitList.length
-        ? "Create the training slides and quiz. Use exhibit screenshots on the slides where they help (via the image field, using the exhibit/page numbers above), and add a hotspot slide where the material teaches finding a specific spot on a form."
-        : "Create the training slides and quiz.",
+      text: hasEmbedded
+        ? "Create the training slides and quiz. The document's own screenshots are exhibit 1; put each one on the slide it belongs to, following the [SCREENSHOT N] markers in the text, and make it a hotspot slide where the step is about clicking or finding a spot."
+        : exhibitList.length
+          ? "Create the training slides and quiz. Use exhibit screenshots on the slides where they help (via the image field, using the exhibit/page numbers above), and add a hotspot slide where the material teaches finding a specific spot on a form."
+          : "Create the training slides and quiz.",
     });
 
     // Generate slides + quiz with Claude

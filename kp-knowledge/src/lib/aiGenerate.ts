@@ -35,11 +35,14 @@ export interface GenerateResult {
 /* Sends the Word doc (+ optional exhibits, pre-rendered to page images) to
  * the generateKnowledgeTest Cloud Function, which parses the doc, has
  * Claude build slides + a quiz — placing exhibit screenshots on relevant
- * slides — and saves a draft test. Generation runs on Opus and can take a
- * couple of minutes for long docs. */
+ * slides — and saves a draft test. When includeScreenshots is true (default),
+ * the function also pulls the screenshots embedded in the .docx itself onto
+ * the slides they belong to. Generation runs on Opus and can take a couple
+ * of minutes for long docs. */
 export async function generateTestFromDoc(
   file: File,
-  exhibits: Exhibit[] = []
+  exhibits: Exhibit[] = [],
+  includeScreenshots = true
 ): Promise<GenerateResult> {
   const buffer = await file.arrayBuffer();
   let binary = "";
@@ -50,7 +53,7 @@ export async function generateTestFromDoc(
   }
   return postFn<GenerateResult>(
     "generateKnowledgeTest",
-    { filename: file.name, data: btoa(binary), exhibits },
+    { filename: file.name, data: btoa(binary), exhibits, includeScreenshots },
     "Generation failed"
   );
 }

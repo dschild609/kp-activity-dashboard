@@ -459,6 +459,7 @@ export function AiCreateAdmin() {
   const navigate = useNavigate();
   const [sourceDoc, setSourceDoc] = useState<File | null>(null);
   const [exhibitFiles, setExhibitFiles] = useState<File[]>([]);
+  const [includeScreenshots, setIncludeScreenshots] = useState(true);
   const [status, setStatus] = useState<
     | { kind: "idle" }
     | { kind: "working"; step: string }
@@ -507,7 +508,7 @@ export function AiCreateAdmin() {
         kind: "working",
         step: "Writing slides and quiz — this can take a minute or two…",
       });
-      const result = await generateTestFromDoc(sourceDoc, exhibits);
+      const result = await generateTestFromDoc(sourceDoc, exhibits, includeScreenshots);
       navigate(`/admin/tests/${result.testId}`);
     } catch (e) {
       setStatus({ kind: "error", message: (e as Error).message });
@@ -519,11 +520,12 @@ export function AiCreateAdmin() {
       <h2 className="kp-kicker mb-4">Create a Test with AI</h2>
       <p className="text-[13.5px] text-kp-text-muted mb-5">
         Upload a Word document — a policy, procedure, or training doc — and the AI
-        builds a slide deck teaching its content plus a quiz. Add supporting files
-        (a blank W-4, for example) and the slides will include screenshots of the
-        relevant pages. Nothing goes live: the result lands as a{" "}
-        <strong className="text-kp-text">draft</strong> for you to review, edit,
-        and publish.
+        builds a slide deck teaching its content plus a quiz. If the document has
+        screenshots in it (a Bullhorn walkthrough, say), they're pulled onto the
+        slides they belong to automatically. You can also add supporting files
+        (a blank W-4, for example) as extra exhibits. Nothing goes live: the
+        result lands as a <strong className="text-kp-text">draft</strong> for you
+        to review, edit, and publish.
       </p>
 
       <DropZone
@@ -561,6 +563,24 @@ export function AiCreateAdmin() {
         </div>
       )}
 
+      {sourceDoc && (
+        <label className="mt-4 flex items-start gap-2.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={includeScreenshots}
+            disabled={working}
+            onChange={(e) => setIncludeScreenshots(e.target.checked)}
+            className="mt-0.5 accent-kp-crimson"
+          />
+          <span className="text-[13px] text-kp-text-muted leading-snug">
+            <span className="font-semibold text-kp-text">Use the screenshots in the document</span>
+            <br />
+            Pull the images embedded in the .docx onto the slides they appear next to. Turn off for a
+            text-only, faster build.
+          </span>
+        </label>
+      )}
+
       <div className="mt-4 flex items-center gap-3">
         <button
           type="button"
@@ -584,8 +604,8 @@ export function AiCreateAdmin() {
       <div className="mt-8 bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5">
         <h3 className="kp-kicker mb-3">How it works</h3>
         <ol className="text-[13px] text-kp-text-muted space-y-1.5 list-decimal pl-4">
-          <li>The Word document's text is extracted; exhibit PDFs are rendered to page images in your browser.</li>
-          <li>Claude writes training slides covering the content — placing exhibit screenshots on the slides they belong to — then a 10–15 question quiz.</li>
+          <li>The Word document's text and its embedded screenshots are extracted; any exhibit PDFs are rendered to page images in your browser.</li>
+          <li>Claude writes training slides covering the content — placing each screenshot on the slide it belongs to — then a 10–15 question quiz.</li>
           <li>You review the draft — edit any slide, screenshot, question, or setting, in full.</li>
           <li>Approve &amp; Publish makes it visible to staff, who view the slides and then take the quiz.</li>
         </ol>

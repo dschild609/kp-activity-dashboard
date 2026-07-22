@@ -22,14 +22,21 @@ export function AssignmentEditor({
 }) {
   const [personQuery, setPersonQuery] = useState("");
 
+  const excluded = useMemo(() => new Set(assignment.excludeUids ?? []), [assignment.excludeUids]);
+
   const assignedPeople = useMemo(
     () => resolveAssigned(assignment, roster).slice().sort((a, b) => a.name.localeCompare(b.name)),
     [assignment, roster]
   );
   const assignedCount = assignedPeople.length;
+  // Held-out people, shown so an exclusion can always be undone here.
+  const excludedPeople = useMemo(
+    () => roster.filter((u) => excluded.has(u.uid)).sort((a, b) => a.name.localeCompare(b.name)),
+    [roster, excluded]
+  );
   const pickedPeople = useMemo(
-    () => roster.filter((u) => assignment.uids.includes(u.uid)),
-    [roster, assignment.uids]
+    () => roster.filter((u) => assignment.uids.includes(u.uid) && !excluded.has(u.uid)),
+    [roster, assignment.uids, excluded]
   );
   const searchResults = useMemo(() => {
     const q = personQuery.trim().toLowerCase();
@@ -37,11 +44,12 @@ export function AssignmentEditor({
     return roster
       .filter(
         (u) =>
-          !assignment.uids.includes(u.uid) &&
+          // Someone picked but held out is still findable — adding them back clears the hold
+          !(assignment.uids.includes(u.uid) && !excluded.has(u.uid)) &&
           (u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
       )
       .slice(0, 6);
-  }, [personQuery, roster, assignment.uids]);
+  }, [personQuery, roster, assignment.uids, excluded]);
 
   const toggle = (key: "roles" | "branches", value: string) => {
     const cur = assignment[key];
@@ -50,6 +58,16 @@ export function AssignmentEditor({
       [key]: cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value],
     });
   };
+
+  /* Hold one person out of a role/branch/everyone match without unpicking the
+   * whole group. Their uid stays in `uids` (if it was there) so restoring puts
+   * them back exactly as they were — resolveAssigned and the server reminders
+   * both honor excludeUids, so a held-out person is neither tracked nor nagged. */
+  const excludePerson = (uid: string) =>
+    onChange({ ...assignment, excludeUids: [...new Set([...(assignment.excludeUids ?? []), uid])] });
+
+  const restorePerson = (uid: string) =>
+    onChange({ ...assignment, excludeUids: (assignment.excludeUids ?? []).filter((x) => x !== uid) });
 
   return (
     <div className="bg-kp-surface border border-kp-border rounded-xl shadow-2xs p-5 space-y-5">
@@ -133,7 +151,11 @@ export function AssignmentEditor({
                       key={u.uid}
                       type="button"
                       onClick={() => {
-                        onChange({ ...assignment, uids: [...assignment.uids, u.uid] });
+                        onChange({
+                          ...assignment,
+                          uids: [...new Set([...assignment.uids, u.uid])],
+                          excludeUids: (assignment.excludeUids ?? []).filter((x) => x !== u.uid),
+                        });
                         setPersonQuery("");
                       }}
                       className="w-full text-left px-3 py-1.5 hover:bg-kp-surface-alt"
@@ -188,14 +210,59 @@ export function AssignmentEditor({
       {assignedCount > 0 && (
         <div className="border border-kp-border-soft rounded-lg max-h-56 overflow-y-auto divide-y divide-kp-border-soft">
           {assignedPeople.map((u) => (
-            <div key={u.uid} className="px-3 py-1.5">
-              <div className="text-[13px] font-semibold text-kp-text truncate">{u.name}</div>
-              <div className="text-[11.5px] text-kp-text-faint truncate">
-                {roleLabel(u.role)}
-                {u.branch ? ` · ${u.branch}` : ""} · {u.email}
+            <div key={u.uid} className="flex items-center gap-2 px-3 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-semibold text-kp-text truncate">{u.name}</div>
+                <div className="text-[11.5px] text-kp-text-faint truncate">
+                  {roleLabel(u.role)}
+                  {u.branch ? ` · ${u.branch}` : ""} · {u.email}
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => excludePerson(u.uid)}
+                title={`Remove ${u.name} from this assignment`}
+                aria-label={`Remove ${u.name} from this assignment`}
+                className="shrink-0 px-1.5 text-[13px] text-kp-text-faint hover:text-kp-bad transition-colors"
+              >
+                ✕
+              </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {excludedPeople.length > 0 && (
+        <div>
+          <div className="font-mono text-[11px] uppercase text-kp-text-faint mb-2">
+            Removed ({excludedPeople.length})
+          </div>
+          <div className="border border-kp-border-soft rounded-lg max-h-40 overflow-y-auto divide-y divide-kp-border-soft">
+            {excludedPeople.map((u) => (
+              <div key={u.uid} className="flex items-center gap-2 px-3 py-1.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold text-kp-text-faint line-through truncate">
+                    {u.name}
+                  </div>
+                  <div className="text-[11.5px] text-kp-text-faint truncate">
+                    {roleLabel(u.role)}
+                    {u.branch ? ` · ${u.branch}` : ""} · {u.email}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => restorePerson(u.uid)}
+                  className="shrink-0 px-2 py-1 text-[12px] font-semibold text-kp-text-muted border border-kp-border rounded-lg hover:text-kp-navy hover:border-kp-border-strong transition-colors"
+                >
+                  Add back
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="text-[12px] text-kp-text-faint mt-1.5">
+            Held out of the branch/role match — they can still take the test, but aren't tracked or
+            reminded.
+          </p>
         </div>
       )}
     </div>
